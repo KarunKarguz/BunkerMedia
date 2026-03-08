@@ -17,3 +17,7 @@ prefer_low_power_mode: true
 embedding_dim: 128
 intelligence_batch_size: 40
 transcript_max_chars: 12000
+max_download_attempts: 4
+retry_base_seconds: 30
+retry_max_seconds: 1800
+retry_jitter: 0.15

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -75,9 +75,22 @@ class Database:
                     status TEXT DEFAULT 'pending',
                     priority INTEGER DEFAULT 0,
                     attempts INTEGER DEFAULT 0,
+                    next_run_at TEXT,
                     last_error TEXT,
                     added_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS dead_letter_jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    original_job_id INTEGER,
+                    url TEXT NOT NULL,
+                    target_type TEXT DEFAULT 'auto',
+                    priority INTEGER DEFAULT 0,
+                    attempts INTEGER DEFAULT 0,
+                    last_error TEXT,
+                    failed_at TEXT NOT NULL,
+                    retried_at TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS video_intelligence (
@@ -96,13 +109,24 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_jobs_status ON download_jobs(status);
                 CREATE INDEX IF NOT EXISTS idx_history_video ON watch_history(video_id);
                 CREATE INDEX IF NOT EXISTS idx_intel_quality ON video_intelligence(quality_score);
+                CREATE INDEX IF NOT EXISTS idx_dead_failed_at ON dead_letter_jobs(failed_at);
                 """
             )
+            self._migrate_download_jobs_table()
             self.conn.commit()
 
     @staticmethod
     def _utc_now() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    def _migrate_download_jobs_table(self) -> None:
+        if not self._has_column("download_jobs", "next_run_at"):
+            self.conn.execute("ALTER TABLE download_jobs ADD COLUMN next_run_at TEXT")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_next_run ON download_jobs(next_run_at)")
+
+    def _has_column(self, table: str, column: str) -> bool:
+        rows = self.conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return any(str(row["name"]) == column for row in rows)
 
     def upsert_video(self, meta: VideoMetadata) -> None:
         now = self._utc_now()
@@ -213,54 +237,199 @@ class Database:
 
             cursor = self.conn.execute(
                 """
-                INSERT INTO download_jobs (url, target_type, status, priority, added_at, updated_at)
-                VALUES (?, ?, 'pending', ?, ?, ?)
+                INSERT INTO download_jobs (
+                    url, target_type, status, priority, attempts, next_run_at, added_at, updated_at
+                )
+                VALUES (?, ?, 'pending', ?, 0, ?, ?, ?)
                 """,
-                (url, target_type, priority, now, now),
+                (url, target_type, priority, now, now, now),
             )
             self.conn.commit()
             return int(cursor.lastrowid)
 
     def claim_pending_jobs(self, limit: int) -> list[dict[str, Any]]:
         with self._lock:
+            now = self._utc_now()
             rows = self.conn.execute(
                 """
-                SELECT id, url, target_type, status, priority, attempts
+                SELECT id, url, target_type, status, priority, attempts, next_run_at
                 FROM download_jobs
-                WHERE status='pending'
+                WHERE status='pending' AND (next_run_at IS NULL OR next_run_at <= ?)
                 ORDER BY priority DESC, id ASC
                 LIMIT ?
                 """,
-                (limit,),
+                (now, limit),
             ).fetchall()
             if not rows:
                 return []
 
             ids = [int(row["id"]) for row in rows]
             placeholders = ",".join("?" for _ in ids)
-            params: list[Any] = [self._utc_now(), *ids]
+            params: list[Any] = [now, *ids]
             self.conn.execute(
                 f"""
                 UPDATE download_jobs
-                SET status='processing', attempts=attempts + 1, updated_at=?
+                SET status='processing', attempts=attempts + 1, next_run_at=NULL, updated_at=?
                 WHERE id IN ({placeholders})
                 """,
                 params,
             )
             self.conn.commit()
-            return [dict(row) for row in rows]
+            claimed: list[dict[str, Any]] = []
+            for row in rows:
+                record = dict(row)
+                record["attempts"] = int(row["attempts"]) + 1
+                claimed.append(record)
+            return claimed
 
     def update_job_status(self, job_id: int, status: str, error: str | None = None) -> None:
         with self._lock:
             self.conn.execute(
                 """
                 UPDATE download_jobs
-                SET status=?, last_error=?, updated_at=?
+                SET status=?, last_error=?, next_run_at=NULL, updated_at=?
                 WHERE id=?
                 """,
                 (status, error, self._utc_now(), job_id),
             )
             self.conn.commit()
+
+    def requeue_job_with_backoff(self, job_id: int, error: str, delay_seconds: int) -> None:
+        run_at = datetime.now(timezone.utc) + timedelta(seconds=max(1, delay_seconds))
+        with self._lock:
+            self.conn.execute(
+                """
+                UPDATE download_jobs
+                SET status='pending', last_error=?, next_run_at=?, updated_at=?
+                WHERE id=?
+                """,
+                (error, run_at.isoformat(), self._utc_now(), job_id),
+            )
+            self.conn.commit()
+
+    def dead_letter_job(self, job_id: int, error: str) -> None:
+        now = self._utc_now()
+        with self._lock:
+            row = self.conn.execute(
+                """
+                SELECT id, url, target_type, priority, attempts
+                FROM download_jobs
+                WHERE id=?
+                """,
+                (job_id,),
+            ).fetchone()
+            if not row:
+                return
+
+            self.conn.execute(
+                """
+                INSERT INTO dead_letter_jobs (
+                    original_job_id, url, target_type, priority, attempts, last_error, failed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(row["id"]),
+                    str(row["url"]),
+                    str(row["target_type"]),
+                    int(row["priority"]),
+                    int(row["attempts"]),
+                    error,
+                    now,
+                ),
+            )
+            self.conn.execute(
+                """
+                UPDATE download_jobs
+                SET status='dead', last_error=?, next_run_at=NULL, updated_at=?
+                WHERE id=?
+                """,
+                (error, now, job_id),
+            )
+            self.conn.commit()
+
+    def list_download_jobs(self, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        query = """
+            SELECT id, url, target_type, status, priority, attempts, next_run_at,
+                   last_error, added_at, updated_at
+            FROM download_jobs
+        """
+        params: list[Any] = []
+        if status:
+            query += " WHERE status=? "
+            params.append(status)
+        query += " ORDER BY priority DESC, id DESC LIMIT ?"
+        params.append(limit)
+        with self._lock:
+            rows = self.conn.execute(query, tuple(params)).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_dead_letter_jobs(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT id, original_job_id, url, target_type, priority, attempts,
+                       last_error, failed_at, retried_at
+                FROM dead_letter_jobs
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def retry_dead_letter(self, dead_letter_id: int) -> int | None:
+        now = self._utc_now()
+        with self._lock:
+            row = self.conn.execute(
+                """
+                SELECT id, url, target_type, priority
+                FROM dead_letter_jobs
+                WHERE id=?
+                """,
+                (dead_letter_id,),
+            ).fetchone()
+            if not row:
+                return None
+
+            existing = self.conn.execute(
+                """
+                SELECT id FROM download_jobs
+                WHERE url=? AND status IN ('pending', 'processing')
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(row["url"]),),
+            ).fetchone()
+
+            if existing:
+                new_job_id = int(existing["id"])
+            else:
+                cursor = self.conn.execute(
+                    """
+                    INSERT INTO download_jobs (
+                        url, target_type, status, priority, attempts, next_run_at, added_at, updated_at
+                    ) VALUES (?, ?, 'pending', ?, 0, ?, ?, ?)
+                    """,
+                    (
+                        str(row["url"]),
+                        str(row["target_type"]),
+                        int(row["priority"]),
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+                new_job_id = int(cursor.lastrowid)
+
+            self.conn.execute(
+                """
+                UPDATE dead_letter_jobs
+                SET retried_at=?
+                WHERE id=?
+                """,
+                (now, dead_letter_id),
+            )
+            self.conn.commit()
+            return new_job_id
 
     def list_videos(self, limit: int = 100, search: str | None = None) -> list[dict[str, Any]]:
         query = """

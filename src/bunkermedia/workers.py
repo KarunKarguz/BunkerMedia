@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 from typing import Any
 
 from bunkermedia.config import AppConfig
@@ -127,9 +128,38 @@ class WorkerManager:
             job_id = int(job["id"])
             url = str(job["url"])
             target_type = str(job.get("target_type") or "auto")
+            attempts = int(job.get("attempts") or 1)
             try:
                 await self.downloader.download_url(url, target_type=target_type)
                 self.db.update_job_status(job_id, "done")
             except Exception as exc:
-                self.db.update_job_status(job_id, "failed", error=str(exc))
-                self.logger.exception("Download job failed id=%s url=%s", job_id, url)
+                error = str(exc)
+                if attempts >= self.config.max_download_attempts:
+                    self.db.dead_letter_job(job_id, error=error)
+                    self.logger.exception(
+                        "Download job moved to dead-letter id=%s attempts=%s url=%s",
+                        job_id,
+                        attempts,
+                        url,
+                    )
+                    return
+
+                delay_seconds = self._compute_retry_delay_seconds(attempts)
+                self.db.requeue_job_with_backoff(job_id, error=error, delay_seconds=delay_seconds)
+                self.logger.warning(
+                    "Download job requeued id=%s attempts=%s next_retry_in=%ss url=%s error=%s",
+                    job_id,
+                    attempts,
+                    delay_seconds,
+                    url,
+                    error,
+                )
+
+    def _compute_retry_delay_seconds(self, attempts: int) -> int:
+        base = max(1, self.config.retry_base_seconds)
+        maximum = max(base, self.config.retry_max_seconds)
+        jitter_ratio = max(0.0, min(0.5, self.config.retry_jitter))
+
+        delay = min(maximum, base * (2 ** max(0, attempts - 1)))
+        jitter_multiplier = 1.0 + random.uniform(-jitter_ratio, jitter_ratio)
+        return max(1, int(delay * jitter_multiplier))

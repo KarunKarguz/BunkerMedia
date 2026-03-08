@@ -8,6 +8,7 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Contributing guide: `CONTRIBUTING.md`
 - Security policy: `SECURITY.md`
 - Architecture notes: `docs/ARCHITECTURE.md`
+- Bunku Mode UI spec: `docs/BUNKU_MODE_UI.md`
 
 ## Features
 
@@ -16,6 +17,7 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Transcript + metadata intelligence pipeline with lightweight hashed embeddings
 - SQLite-backed metadata, watch history, and preferences
 - Hybrid recommendation engine (semantic + behavioral + trending) with diversity rerank
+- Bunku Mode local-first web UI (`/bunku`) with rails, queue panel, and feedback controls
 - FastAPI media server
 - Async background workers for sync and queued downloads
 - CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker serve`
@@ -45,6 +47,10 @@ Edit `config.yaml`:
 - `embedding_dim`
 - `intelligence_batch_size`
 - `transcript_max_chars`
+- `max_download_attempts`
+- `retry_base_seconds`
+- `retry_max_seconds`
+- `retry_jitter`
 
 Optional feed seeds:
 
@@ -58,14 +64,24 @@ bunker add "https://www.youtube.com/watch?v=..."
 bunker sync
 bunker recommend --limit 20
 bunker recommend --limit 10 --explain
+bunker jobs --status pending --limit 50
+bunker deadletters --limit 50
+bunker retry-dead --all
 bunker serve --host 0.0.0.0 --port 8080
+# open http://localhost:8080/bunku
 ```
 
 ## API Endpoints
 
 - `GET /health`
+- `GET /bunku`
+- `GET /bunku/data/home`
+- `POST /bunku/data/sync`
 - `GET /videos?limit=100&search=keyword`
 - `GET /videos/{video_id}`
+- `GET /jobs?status=pending&limit=100`
+- `GET /deadletters?limit=100`
+- `POST /deadletters/{dead_letter_id}/retry`
 - `GET /recommendations?limit=20&explain=true`
 - `GET /stream/{video_id}`
 - `POST /videos/{video_id}/watched`

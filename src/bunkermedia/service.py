@@ -73,6 +73,15 @@ class BunkerService:
     async def recommend(self, limit: int = 20, explain: bool = False):
         return await self.recommender.recommend(limit=limit, explain=explain)
 
+    def list_download_jobs(self, status: str | None = None, limit: int = 100):
+        return self.db.list_download_jobs(status=status, limit=limit)
+
+    def list_dead_letter_jobs(self, limit: int = 100):
+        return self.db.list_dead_letter_jobs(limit=limit)
+
+    def retry_dead_letter(self, dead_letter_id: int) -> int | None:
+        return self.db.retry_dead_letter(dead_letter_id)
+
     def list_videos(self, limit: int = 100, search: str | None = None):
         return self.db.list_videos(limit=limit, search=search)
 

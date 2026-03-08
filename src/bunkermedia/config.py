@@ -38,6 +38,10 @@ class AppConfig:
     embedding_dim: int = 128
     intelligence_batch_size: int = 40
     transcript_max_chars: int = 12000
+    max_download_attempts: int = 4
+    retry_base_seconds: int = 30
+    retry_max_seconds: int = 1800
+    retry_jitter: float = 0.15
 
     @property
     def logs_dir(self) -> Path:
@@ -67,6 +71,10 @@ class AppConfig:
             embedding_dim=int(raw.get("embedding_dim", 128)),
             intelligence_batch_size=int(raw.get("intelligence_batch_size", 40)),
             transcript_max_chars=int(raw.get("transcript_max_chars", 12000)),
+            max_download_attempts=int(raw.get("max_download_attempts", 4)),
+            retry_base_seconds=int(raw.get("retry_base_seconds", 30)),
+            retry_max_seconds=int(raw.get("retry_max_seconds", 1800)),
+            retry_jitter=float(raw.get("retry_jitter", 0.15)),
         )
 
     @staticmethod

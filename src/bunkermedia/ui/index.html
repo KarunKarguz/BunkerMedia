@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bunku Mode</title>
+    <link rel="stylesheet" href="/bunku/styles.css" />
+  </head>
+  <body>
+    <div class="backdrop"></div>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-main">BUNKU</span>
+        <span class="brand-sub">Bunker Mode</span>
+      </div>
+      <div class="status" id="status-pill">Booting...</div>
+    </header>
+
+    <main class="layout">
+      <section class="hero panel">
+        <div>
+          <h1>Everything local. Sync when online.</h1>
+          <p>
+            Bunku Mode keeps your LAN library ready first, then opportunistically discovers and downloads new content
+            when network is available.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="refresh-btn" class="btn btn-primary">Refresh</button>
+          <button id="sync-btn" class="btn btn-soft">Trigger Sync</button>
+        </div>
+      </section>
+
+      <section class="search panel">
+        <div class="section-head">
+          <h2>Search</h2>
+          <span class="hint">Local metadata + downloaded library</span>
+        </div>
+        <form id="search-form" class="search-form">
+          <input id="search-input" type="text" placeholder="Search title or channel" />
+          <button class="btn btn-primary" type="submit">Find</button>
+        </form>
+        <div id="search-results" class="card-row"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Continue Watching</h2>
+          <span class="hint">Resume local content</span>
+        </div>
+        <div id="rail-continue" class="card-row"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Downloaded Now</h2>
+          <span class="hint">Ready to stream offline</span>
+        </div>
+        <div id="rail-downloaded" class="card-row"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Recommended For You</h2>
+          <span class="hint">Hybrid score + novelty</span>
+        </div>
+        <div id="rail-recommended" class="card-row"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Fresh Sync Results</h2>
+          <span class="hint">Recently discovered</span>
+        </div>
+        <div id="rail-fresh" class="card-row"></div>
+      </section>
+
+      <section class="queue-grid">
+        <article class="panel">
+          <div class="section-head">
+            <h2>Queue</h2>
+            <span class="hint">Pending and processing jobs</span>
+          </div>
+          <div id="queue-list" class="list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="section-head">
+            <h2>Dead Letters</h2>
+            <span class="hint">Failures requiring review</span>
+          </div>
+          <div id="deadletters-list" class="list"></div>
+        </article>
+      </section>
+    </main>
+
+    <template id="video-card-template">
+      <article class="card">
+        <h3 class="card-title"></h3>
+        <p class="card-meta"></p>
+        <p class="card-note"></p>
+        <div class="card-actions"></div>
+      </article>
+    </template>
+
+    <template id="job-row-template">
+      <article class="job-row">
+        <div class="job-main"></div>
+        <div class="job-sub"></div>
+        <div class="job-actions"></div>
+      </article>
+    </template>
+
+    <script src="/bunku/app.js" defer></script>
+  </body>
+</html>

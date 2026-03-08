@@ -1,0 +1,1 @@
+recursive-include src/bunkermedia/ui *.html *.css *.js

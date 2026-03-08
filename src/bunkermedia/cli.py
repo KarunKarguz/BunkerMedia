@@ -26,6 +26,17 @@ def _build_parser() -> argparse.ArgumentParser:
     rec_cmd.add_argument("--limit", type=int, default=20)
     rec_cmd.add_argument("--explain", action="store_true", help="Show scoring explanation")
 
+    jobs_cmd = sub.add_parser("jobs", help="Inspect download job queue")
+    jobs_cmd.add_argument("--status", default=None, choices=["pending", "processing", "done", "failed", "dead"])
+    jobs_cmd.add_argument("--limit", type=int, default=50)
+
+    dead_cmd = sub.add_parser("deadletters", help="Inspect dead-letter download jobs")
+    dead_cmd.add_argument("--limit", type=int, default=50)
+
+    retry_dead_cmd = sub.add_parser("retry-dead", help="Retry one or all dead-letter jobs")
+    retry_dead_cmd.add_argument("--id", type=int, default=None, help="Dead-letter id to retry")
+    retry_dead_cmd.add_argument("--all", action="store_true", help="Retry all non-retried dead-letter jobs")
+
     serve_cmd = sub.add_parser("serve", help="Run FastAPI server")
     serve_cmd.add_argument("--host", default=None)
     serve_cmd.add_argument("--port", type=int, default=None)
@@ -69,6 +80,58 @@ async def _cmd_recommend(args: argparse.Namespace) -> None:
     await service.shutdown()
 
 
+async def _cmd_jobs(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    jobs = service.list_download_jobs(status=args.status, limit=args.limit)
+    if not jobs:
+        print("No download jobs found")
+    for job in jobs:
+        print(json.dumps(job, separators=(",", ":"), ensure_ascii=True))
+    await service.shutdown()
+
+
+async def _cmd_deadletters(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    items = service.list_dead_letter_jobs(limit=args.limit)
+    if not items:
+        print("No dead-letter jobs found")
+    for item in items:
+        print(json.dumps(item, separators=(",", ":"), ensure_ascii=True))
+    await service.shutdown()
+
+
+async def _cmd_retry_dead(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+
+    retried = 0
+    if args.all:
+        items = service.list_dead_letter_jobs(limit=500)
+        for item in items:
+            if item.get("retried_at"):
+                continue
+            dead_id = int(item["id"])
+            job_id = service.retry_dead_letter(dead_id)
+            if job_id:
+                retried += 1
+                print(f"Retried dead-letter id={dead_id} -> job_id={job_id}")
+    elif args.id is not None:
+        job_id = service.retry_dead_letter(int(args.id))
+        if job_id:
+            retried = 1
+            print(f"Retried dead-letter id={args.id} -> job_id={job_id}")
+        else:
+            print(f"Dead-letter id={args.id} not found")
+    else:
+        print("Specify either --id <dead_letter_id> or --all")
+
+    if retried == 0 and (args.all or args.id is not None):
+        print("No dead-letter jobs retried")
+    await service.shutdown()
+
+
 def _cmd_serve(args: argparse.Namespace) -> None:
     import uvicorn
 
@@ -98,6 +161,15 @@ def main() -> None:
         return
     if args.command == "recommend":
         asyncio.run(_cmd_recommend(args))
+        return
+    if args.command == "jobs":
+        asyncio.run(_cmd_jobs(args))
+        return
+    if args.command == "deadletters":
+        asyncio.run(_cmd_deadletters(args))
+        return
+    if args.command == "retry-dead":
+        asyncio.run(_cmd_retry_dead(args))
         return
     if args.command == "serve":
         _cmd_serve(args)

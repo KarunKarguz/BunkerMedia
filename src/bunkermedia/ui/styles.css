@@ -1,0 +1,283 @@
+:root {
+  --bg: #0f1314;
+  --bg-soft: #151d1e;
+  --ink: #f8f5ee;
+  --muted: #a9b3b4;
+  --accent: #ff7a32;
+  --accent-soft: #244f57;
+  --good: #3fbf7f;
+  --warn: #f0b100;
+  --bad: #d64f4f;
+  --panel-border: rgba(255, 255, 255, 0.09);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: radial-gradient(circle at 16% -8%, #28484e, transparent 32%),
+    radial-gradient(circle at 84% 10%, #473425, transparent 38%), var(--bg);
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  min-height: 100vh;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.3;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--panel-border);
+  backdrop-filter: blur(10px);
+  background: rgba(8, 11, 12, 0.7);
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.brand-main {
+  font-size: 1.8rem;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.brand-sub {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.22em;
+}
+
+.status {
+  border: 1px solid var(--panel-border);
+  border-radius: 99px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  background: var(--bg-soft);
+  color: var(--muted);
+}
+
+.layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.panel {
+  background: linear-gradient(180deg, rgba(29, 39, 40, 0.8), rgba(14, 19, 20, 0.9));
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 16px;
+  animation: reveal 300ms ease;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.hero p {
+  color: var(--muted);
+  margin: 8px 0 0;
+  max-width: 65ch;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+
+.section-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.search-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+input {
+  flex: 1;
+  min-width: 0;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: #111719;
+  color: var(--ink);
+  padding: 10px 12px;
+}
+
+.btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #130d08;
+}
+
+.btn-soft {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.btn-good {
+  background: var(--good);
+  color: #0b170f;
+}
+
+.btn-bad {
+  background: var(--bad);
+  color: #250f0f;
+}
+
+.card-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(10, 14, 15, 0.72);
+  display: grid;
+  gap: 8px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.card-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.card-note {
+  margin: 0;
+  color: #d4ddd6;
+  font-size: 0.78rem;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.card-actions .btn {
+  padding: 7px 8px;
+  font-size: 0.72rem;
+}
+
+.queue-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+}
+
+.job-row {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(12, 16, 17, 0.75);
+}
+
+.job-main {
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.job-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.job-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .queue-grid {
+    grid-template-columns: 1fr;
+  }
+}
