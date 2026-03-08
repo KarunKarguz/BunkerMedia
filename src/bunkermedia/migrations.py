@@ -125,11 +125,21 @@ def _migration_next_run_index(conn: "sqlite3.Connection") -> None:
 
 
 def _migration_video_duration_file_size(conn: "sqlite3.Connection") -> None:
-    if not _has_column(conn, "videos", "duration_seconds"):
-        conn.execute("ALTER TABLE videos ADD COLUMN duration_seconds INTEGER")
-    if not _has_column(conn, "videos", "file_size_bytes"):
-        conn.execute("ALTER TABLE videos ADD COLUMN file_size_bytes INTEGER DEFAULT 0")
+    _add_column_if_missing(conn, "videos", "duration_seconds", "INTEGER")
+    _add_column_if_missing(conn, "videos", "file_size_bytes", "INTEGER DEFAULT 0")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_duration ON videos(duration_seconds)")
+
+
+def _add_column_if_missing(conn: "sqlite3.Connection", table: str, column: str, column_spec: str) -> None:
+    if _has_column(conn, table, column):
+        return
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_spec}")
+    except Exception as exc:
+        text = str(exc).lower()
+        if "duplicate column name" in text:
+            return
+        raise
 
 
 def _has_column(conn: "sqlite3.Connection", table: str, column: str) -> bool:

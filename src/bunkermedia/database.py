@@ -85,7 +85,6 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel);
                 CREATE INDEX IF NOT EXISTS idx_videos_downloaded ON videos(downloaded);
-                CREATE INDEX IF NOT EXISTS idx_videos_duration ON videos(duration_seconds);
                 CREATE INDEX IF NOT EXISTS idx_jobs_status ON download_jobs(status);
                 CREATE INDEX IF NOT EXISTS idx_history_video ON watch_history(video_id);
                 """
