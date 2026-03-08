@@ -1,10 +1,12 @@
 from pathlib import Path
+import asyncio
 
 from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
 from bunkermedia.intelligence import build_hash_embedding, cosine_similarity
 from bunkermedia.maintenance import backup_state, restore_state
 from bunkermedia.network import NetworkStateManager
+from bunkermedia.service import BunkerService
 
 
 def test_config_defaults(tmp_path: Path) -> None:
@@ -15,6 +17,7 @@ def test_config_defaults(tmp_path: Path) -> None:
 def test_database_init(tmp_path: Path) -> None:
     db = Database(tmp_path / "test.db")
     db.initialize()
+    assert db.get_schema_version() >= 3
     db.close()
 
 
@@ -113,3 +116,39 @@ def test_sync_window_logic(tmp_path: Path) -> None:
     assert manager.in_sync_window(datetime(2026, 3, 8, 9, 30).astimezone())
     assert not manager.in_sync_window(datetime(2026, 3, 8, 14, 30).astimezone())
     assert manager.in_sync_window(datetime(2026, 3, 8, 23, 30).astimezone())
+
+
+def test_schema_migrations_list(tmp_path: Path) -> None:
+    db = Database(tmp_path / "schema.db")
+    db.initialize()
+    migrations = db.list_schema_migrations()
+    assert len(migrations) >= 3
+    assert migrations[-1]["version"] >= 3
+    db.close()
+
+
+def test_service_provider_registry(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "download_path: ./media",
+                "database_path: ./bunkermedia.db",
+                "download_archive: ./archive.txt",
+                "force_offline_mode: true",
+                "auto_start_workers: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    async def _run() -> None:
+        service = BunkerService(cfg_path)
+        await service.initialize()
+        providers = service.list_providers()
+        assert "youtube" in providers
+        health = service.get_health_state()
+        assert int(health["schema_version"]) >= 3
+        await service.shutdown()
+
+    asyncio.run(_run())

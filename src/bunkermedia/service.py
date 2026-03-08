@@ -11,6 +11,7 @@ from bunkermedia.logging_utils import setup_logging
 from bunkermedia.maintenance import backup_state, restore_state
 from bunkermedia.metrics import MetricsRegistry
 from bunkermedia.network import NetworkStateManager
+from bunkermedia.providers import ProviderRegistry, YouTubeProvider
 from bunkermedia.recommender import RecommendationEngine
 from bunkermedia.scraper import Scraper
 from bunkermedia.workers import WorkerManager
@@ -33,6 +34,8 @@ class BunkerService:
             max_text_chars=self.config.transcript_max_chars,
         )
         self.recommender = RecommendationEngine(self.db, self.logger)
+        self.providers = ProviderRegistry()
+        self.providers.register(YouTubeProvider(self.scraper, self.downloader))
         self.workers = WorkerManager(
             self.config,
             self.db,
@@ -110,6 +113,21 @@ class BunkerService:
     def list_videos(self, limit: int = 100, search: str | None = None):
         return self.db.list_videos(limit=limit, search=search)
 
+    def list_providers(self) -> list[str]:
+        return self.providers.list()
+
+    async def discover(self, provider: str, source: str, limit: int = 50):
+        selected = self.providers.get(provider)
+        items = await selected.discover(source, limit=limit)
+        self.metrics.inc(f"provider_discover_{selected.name}_total")
+        return items
+
+    async def acquire(self, provider: str, source: str, mode: str = "auto"):
+        selected = self.providers.get(provider)
+        items = await selected.acquire(source, mode=mode)
+        self.metrics.inc(f"provider_acquire_{selected.name}_total")
+        return items
+
     def get_video(self, video_id: str):
         return self.db.get_video(video_id)
 
@@ -155,6 +173,8 @@ class BunkerService:
             "status": "ok",
             "online": self.network.is_online,
             "in_sync_window": self.network.in_sync_window(),
+            "schema_version": self.db.get_schema_version(),
+            "providers": self.list_providers(),
         }
 
     def render_metrics(self) -> str:
@@ -162,6 +182,7 @@ class BunkerService:
         self.metrics.set_gauge("queue_processing", float(len(self.db.list_download_jobs(status="processing", limit=5000))))
         self.metrics.set_gauge("queue_dead", float(len(self.db.list_download_jobs(status="dead", limit=5000))))
         self.metrics.set_gauge("deadletter_items", float(len(self.db.list_dead_letter_jobs(limit=5000))))
+        self.metrics.set_gauge("schema_version", float(self.db.get_schema_version()))
         return self.metrics.render_prometheus()
 
     def backup(self, output_dir: Path | None = None) -> Path:
@@ -169,3 +190,9 @@ class BunkerService:
 
     def restore(self, archive_path: Path, force: bool = False) -> None:
         restore_state(self.config, archive_path=archive_path, force=force)
+
+    def get_schema_version(self) -> int:
+        return self.db.get_schema_version()
+
+    def list_schema_migrations(self) -> list[dict[str, object]]:
+        return self.db.list_schema_migrations()

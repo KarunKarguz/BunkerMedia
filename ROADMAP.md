@@ -112,6 +112,7 @@ Support pluggable acquisition from multiple authorized sources.
 ### Scope
 
 - [ ] Provider interface: discover/metadata/download methods.
+- [x] Provider interface: discover/metadata/download methods.
 - [ ] Built-in providers: YouTube, RSS/video feeds, local watch folders.
 - [ ] Optional community provider adapters via plugin registry.
 - [ ] Unified source priority and dedupe strategy.
@@ -148,7 +149,7 @@ Production-grade open-source release for broad self-hosting.
 
 ### Scope
 
-- [ ] Migration system and compatibility guarantees.
+- [x] Migration system and compatibility guarantees.
 - [x] Backups, restore verification, and disaster recovery guide.
 - [x] Docker Compose and systemd deployment profiles.
 - [ ] Security hardening and release checklist.

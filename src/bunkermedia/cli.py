@@ -50,6 +50,21 @@ def _build_parser() -> argparse.ArgumentParser:
     status_cmd = sub.add_parser("status", help="Show runtime status")
     status_cmd.add_argument("--json", action="store_true", help="Output JSON")
 
+    providers_cmd = sub.add_parser("providers", help="List configured source providers")
+
+    discover_cmd = sub.add_parser("discover", help="Discover metadata via provider")
+    discover_cmd.add_argument("--provider", default="youtube")
+    discover_cmd.add_argument("--source", required=True, help="Source selector (e.g. trending or URL)")
+    discover_cmd.add_argument("--limit", type=int, default=20)
+
+    acquire_cmd = sub.add_parser("acquire", help="Acquire content via provider")
+    acquire_cmd.add_argument("--provider", default="youtube")
+    acquire_cmd.add_argument("--source", required=True, help="Source URL or selector")
+    acquire_cmd.add_argument("--mode", default="auto", choices=["auto", "single", "playlist", "channel", "trending"])
+
+    schema_cmd = sub.add_parser("schema", help="Show DB schema version and migrations")
+    schema_cmd.add_argument("--json", action="store_true", help="Output JSON")
+
     serve_cmd = sub.add_parser("serve", help="Run FastAPI server")
     serve_cmd.add_argument("--host", default=None)
     serve_cmd.add_argument("--port", type=int, default=None)
@@ -171,8 +186,75 @@ async def _cmd_status(args: argparse.Namespace) -> None:
     if args.json:
         print(json.dumps(status, separators=(",", ":"), ensure_ascii=True))
     else:
-        for key in ["status", "online", "in_sync_window", "jobs_pending", "jobs_processing", "jobs_dead", "deadletters"]:
+        for key in [
+            "status",
+            "online",
+            "in_sync_window",
+            "schema_version",
+            "jobs_pending",
+            "jobs_processing",
+            "jobs_dead",
+            "deadletters",
+        ]:
             print(f"{key}: {status[key]}")
+    await service.shutdown()
+
+
+async def _cmd_providers(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    providers = service.list_providers()
+    for provider in providers:
+        print(provider)
+    await service.shutdown()
+
+
+async def _cmd_discover(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    try:
+        items = await service.discover(provider=args.provider, source=args.source, limit=int(args.limit))
+    except KeyError as exc:
+        print(str(exc))
+        await service.shutdown()
+        return
+
+    if not items:
+        print("No items discovered")
+    for item in items[: args.limit]:
+        print(f"{item.video_id} | {item.channel} | {item.title}")
+    await service.shutdown()
+
+
+async def _cmd_acquire(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    try:
+        items = await service.acquire(provider=args.provider, source=args.source, mode=args.mode)
+    except KeyError as exc:
+        print(str(exc))
+        await service.shutdown()
+        return
+
+    print(f"Acquired items: {len(items)}")
+    for item in items[:20]:
+        print(f"{item.video_id} | {item.channel} | {item.title}")
+    await service.shutdown()
+
+
+async def _cmd_schema(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    payload = {
+        "schema_version": service.get_schema_version(),
+        "migrations": service.list_schema_migrations(),
+    }
+    if args.json:
+        print(json.dumps(payload, separators=(",", ":"), ensure_ascii=True))
+    else:
+        print(f"schema_version: {payload['schema_version']}")
+        for migration in payload["migrations"]:
+            print(f"{migration['version']}: {migration['name']} @ {migration['applied_at']}")
     await service.shutdown()
 
 
@@ -223,6 +305,18 @@ def main() -> None:
         return
     if args.command == "status":
         asyncio.run(_cmd_status(args))
+        return
+    if args.command == "providers":
+        asyncio.run(_cmd_providers(args))
+        return
+    if args.command == "discover":
+        asyncio.run(_cmd_discover(args))
+        return
+    if args.command == "acquire":
+        asyncio.run(_cmd_acquire(args))
+        return
+    if args.command == "schema":
+        asyncio.run(_cmd_schema(args))
         return
     if args.command == "serve":
         _cmd_serve(args)

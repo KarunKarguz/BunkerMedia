@@ -4,12 +4,14 @@
 
 - Health: `GET /health`
 - Metrics: `GET /metrics` (Prometheus text format)
+- Schema: `GET /schema`
 
 Example:
 
 ```bash
 curl -s http://localhost:8080/health
 curl -s http://localhost:8080/metrics | head
+curl -s http://localhost:8080/schema
 ```
 
 ## Logging
@@ -26,6 +28,10 @@ Logs are written to `logs/bunkermedia.log`.
 ### CLI
 
 ```bash
+bunker status --json
+bunker schema --json
+bunker providers
+bunker discover --provider youtube --source trending --limit 10
 bunker backup --output-dir ./backups
 bunker restore ./backups/bunkermedia-backup-YYYYMMDDTHHMMSSZ.tar.gz --force
 ```

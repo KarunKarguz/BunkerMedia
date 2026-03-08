@@ -22,7 +22,9 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - FastAPI media server
 - Async background workers for sync and queued downloads
 - Prometheus-style metrics endpoint (`/metrics`) and queue/dead-letter observability
-- CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker serve`, `bunker status`, `bunker backup`, `bunker restore`
+- Schema migration/version tracking (`schema_migrations`)
+- Provider plugin framework with built-in `youtube` provider
+- CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker serve`, `bunker status`, `bunker backup`, `bunker restore`, `bunker providers`, `bunker discover`, `bunker schema`
 
 ## Install
 
@@ -75,8 +77,11 @@ bunker jobs --status pending --limit 50
 bunker deadletters --limit 50
 bunker retry-dead --all
 bunker status --json
+bunker providers
+bunker discover --provider youtube --source trending --limit 20
 bunker backup --output-dir ./backups
 bunker restore ./backups/bunkermedia-backup-YYYYMMDDTHHMMSSZ.tar.gz --force
+bunker schema --json
 bunker serve --host 0.0.0.0 --port 8080
 # open http://localhost:8080/bunku
 ```
@@ -85,6 +90,10 @@ bunker serve --host 0.0.0.0 --port 8080
 
 - `GET /health`
 - `GET /metrics`
+- `GET /schema`
+- `GET /providers`
+- `GET /discover?provider=youtube&source=trending&limit=20`
+- `POST /acquire`
 - `GET /bunku`
 - `GET /bunku/data/home`
 - `POST /bunku/data/sync`

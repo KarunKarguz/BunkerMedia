@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from bunkermedia.migrations import apply_migrations, get_schema_version, list_migrations
 from bunkermedia.models import VideoMetadata
 
 
@@ -75,58 +76,31 @@ class Database:
                     status TEXT DEFAULT 'pending',
                     priority INTEGER DEFAULT 0,
                     attempts INTEGER DEFAULT 0,
-                    next_run_at TEXT,
                     last_error TEXT,
                     added_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS dead_letter_jobs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    original_job_id INTEGER,
-                    url TEXT NOT NULL,
-                    target_type TEXT DEFAULT 'auto',
-                    priority INTEGER DEFAULT 0,
-                    attempts INTEGER DEFAULT 0,
-                    last_error TEXT,
-                    failed_at TEXT NOT NULL,
-                    retried_at TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS video_intelligence (
-                    video_id TEXT PRIMARY KEY,
-                    content_text TEXT NOT NULL,
-                    transcript_source TEXT DEFAULT 'metadata',
-                    embedding_json TEXT NOT NULL,
-                    embedding_dim INTEGER NOT NULL,
-                    quality_score REAL DEFAULT 0,
-                    updated_at TEXT NOT NULL,
-                    FOREIGN KEY(video_id) REFERENCES videos(video_id)
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel);
                 CREATE INDEX IF NOT EXISTS idx_videos_downloaded ON videos(downloaded);
                 CREATE INDEX IF NOT EXISTS idx_jobs_status ON download_jobs(status);
                 CREATE INDEX IF NOT EXISTS idx_history_video ON watch_history(video_id);
-                CREATE INDEX IF NOT EXISTS idx_intel_quality ON video_intelligence(quality_score);
-                CREATE INDEX IF NOT EXISTS idx_dead_failed_at ON dead_letter_jobs(failed_at);
                 """
             )
-            self._migrate_download_jobs_table()
+            apply_migrations(self.conn, utc_now=self._utc_now())
             self.conn.commit()
 
     @staticmethod
     def _utc_now() -> str:
         return datetime.now(timezone.utc).isoformat()
 
-    def _migrate_download_jobs_table(self) -> None:
-        if not self._has_column("download_jobs", "next_run_at"):
-            self.conn.execute("ALTER TABLE download_jobs ADD COLUMN next_run_at TEXT")
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_next_run ON download_jobs(next_run_at)")
+    def get_schema_version(self) -> int:
+        with self._lock:
+            return get_schema_version(self.conn)
 
-    def _has_column(self, table: str, column: str) -> bool:
-        rows = self.conn.execute(f"PRAGMA table_info({table})").fetchall()
-        return any(str(row["name"]) == column for row in rows)
+    def list_schema_migrations(self) -> list[dict[str, object]]:
+        with self._lock:
+            return list_migrations(self.conn)
 
     def upsert_video(self, meta: VideoMetadata) -> None:
         now = self._utc_now()

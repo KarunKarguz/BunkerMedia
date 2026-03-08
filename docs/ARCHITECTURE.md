@@ -8,6 +8,7 @@ BunkerMedia is organized into these runtime layers:
 
 2. Storage:
 - `database.py`: SQLite schema and query layer
+- `migrations.py`: schema migration/version management
 
 3. Intelligence:
 - `intelligence.py`: transcript/metadata extraction and embedding generation
@@ -23,6 +24,11 @@ BunkerMedia is organized into these runtime layers:
 5. Interfaces:
 - `cli.py`: command line workflow
 - `server.py`: FastAPI endpoints
+
+6. Providers:
+- `providers/base.py`: provider contract
+- `providers/registry.py`: provider registration and lookup
+- `providers/youtube.py`: built-in YouTube provider
 
 ## Data Flow
 

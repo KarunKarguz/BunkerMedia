@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.3] - 2026-03-08
+
+### Added
+
+- Schema migration/version tracking with `schema_migrations`.
+- Provider plugin framework and built-in `youtube` provider.
+- New provider and schema interfaces in CLI and API (`providers`, `discover`, `acquire`, `schema`).
+- Additional integration-oriented tests for migrations and provider registration.
+
 ## [0.1.2] - 2026-03-08
 
 ### Added

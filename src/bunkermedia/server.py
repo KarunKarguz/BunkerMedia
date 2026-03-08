@@ -36,6 +36,12 @@ class RestorePayload(BaseModel):
     force: bool = False
 
 
+class ProviderAcquirePayload(BaseModel):
+    provider: str = "youtube"
+    source: str
+    mode: str = Field(default="auto", pattern="^(auto|single|playlist|channel|trending)$")
+
+
 def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     service = BunkerService(config_path=config_path)
     app = FastAPI(title="BunkerMedia", version="0.1.0")
@@ -144,6 +150,13 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         await service.refresh_network_state()
         return service.get_health_state()
 
+    @app.get("/schema")
+    async def schema():
+        return {
+            "schema_version": service.get_schema_version(),
+            "migrations": service.list_schema_migrations(),
+        }
+
     @app.get("/metrics")
     async def metrics():
         if not service.config.server.enable_metrics:
@@ -190,6 +203,30 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         except RuntimeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"status": "ok"}
+
+    @app.get("/providers")
+    async def providers():
+        return {"providers": service.list_providers()}
+
+    @app.get("/discover")
+    async def discover(provider: str = "youtube", source: str = "", limit: int = Query(20, ge=1, le=200)):
+        if not source.strip():
+            raise HTTPException(status_code=400, detail="source is required")
+        try:
+            items = await service.discover(provider=provider, source=source, limit=limit)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return [item.__dict__ for item in items]
+
+    @app.post("/acquire")
+    async def acquire(payload: ProviderAcquirePayload):
+        if not payload.source.strip():
+            raise HTTPException(status_code=400, detail="source is required")
+        try:
+            items = await service.acquire(provider=payload.provider, source=payload.source, mode=payload.mode)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return [item.__dict__ for item in items]
 
     @app.get("/jobs")
     async def list_jobs(
