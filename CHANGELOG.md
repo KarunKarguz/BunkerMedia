@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.5] - 2026-03-08
+
+### Changed
+
+- Migrated FastAPI startup/shutdown lifecycle from deprecated `on_event` hooks to lifespan handlers.
+- Expanded integration test harness to cover API queue -> worker -> videos/recommendations flow with mocked downloader/network behavior.
+
+### Added
+
+- Release artifact hardening with CycloneDX SBOM, dependency manifest, and SHA256 checksum generation in release workflow.
+
 ## [0.1.4] - 2026-03-08
 
 ### Added

@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
 from bunkermedia.metrics import MetricsRegistry
+from bunkermedia.models import VideoMetadata
 from bunkermedia.network import NetworkStateManager
 from bunkermedia.server import create_app
 from bunkermedia.workers import WorkerManager
@@ -189,9 +190,9 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("/acquire", paths)
             self.assertIn("/schema", paths)
             self.assertIn("/metrics", paths)
+
             async def _exercise_api() -> None:
-                await app.router.startup()
-                try:
+                async with app.router.lifespan_context(app):
                     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
                         providers = await client.get("/providers")
                         self.assertEqual(providers.status_code, 200)
@@ -208,10 +209,93 @@ class IntegrationTests(unittest.TestCase):
                         payload = discovered.json()
                         self.assertGreaterEqual(len(payload), 1)
                         self.assertTrue(str(payload[0]["video_id"]).startswith("local_"))
-                finally:
-                    await app.router.shutdown()
 
             asyncio.run(_exercise_api())
+
+    def test_api_queue_worker_recommendation_flow_with_mocked_downloader(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg_path = root / "config.yaml"
+            cfg_path.write_text(
+                "\n".join(
+                    [
+                        "download_path: ./media",
+                        "database_path: ./db.sqlite",
+                        "download_archive: ./archive.txt",
+                        "auto_start_workers: false",
+                        "force_offline_mode: true",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            app = create_app(cfg_path)
+
+            async def _exercise_flow() -> None:
+                async with app.router.lifespan_context(app):
+                    service = app.state.service
+
+                    async def _always_allowed() -> bool:
+                        return True
+
+                    async def _mock_refresh_embeddings(limit: int = 40) -> int:
+                        return 0
+
+                    async def _mock_process_single_job(job, sem) -> None:
+                        async with sem:
+                            job_id = int(job["id"])
+                            url = str(job["url"])
+                        file_path = root / "media" / "youtube" / "channel" / "mock-video.mp4"
+                        file_path.parent.mkdir(parents=True, exist_ok=True)
+                        file_path.write_bytes(b"mock")
+                        meta = VideoMetadata(
+                            video_id="mockvid123",
+                            title="Mock Video",
+                            channel="Mock Channel",
+                            upload_date="20260308",
+                            source_url=url,
+                            local_path=str(file_path),
+                            downloaded=True,
+                        )
+                        service.db.upsert_video(meta)
+                        service.db.mark_downloaded(meta.video_id, meta.local_path or str(file_path))
+                        service.db.update_job_status(job_id, "done")
+
+                    service.workers._allow_online_sync = _always_allowed  # type: ignore[method-assign]
+                    service.workers._process_single_job = _mock_process_single_job  # type: ignore[method-assign]
+                    service.intelligence.refresh_embeddings = _mock_refresh_embeddings  # type: ignore[method-assign]
+                    service.workers.intelligence = service.intelligence
+
+                    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+                        queued = await client.post(
+                            "/queue",
+                            json={
+                                "url": "https://example.invalid/video",
+                                "target_type": "single",
+                                "priority": 5,
+                            },
+                        )
+                        self.assertEqual(queued.status_code, 200)
+                        self.assertEqual(queued.json().get("status"), "queued")
+
+                        pending = await client.get("/jobs", params={"status": "pending", "limit": 10})
+                        self.assertEqual(pending.status_code, 200)
+                        self.assertGreaterEqual(len(pending.json()), 1)
+
+                        await service.workers.process_download_queue_once()
+
+                        done = await client.get("/jobs", params={"status": "done", "limit": 10})
+                        self.assertEqual(done.status_code, 200)
+                        self.assertGreaterEqual(len(done.json()), 1)
+
+                        videos = await client.get("/videos", params={"search": "Mock", "limit": 10})
+                        self.assertEqual(videos.status_code, 200)
+                        self.assertGreaterEqual(len(videos.json()), 1)
+
+                        recs = await client.get("/recommendations", params={"limit": 5, "explain": "true"})
+                        self.assertEqual(recs.status_code, 200)
+                        self.assertGreaterEqual(len(recs.json()), 1)
+
+            asyncio.run(_exercise_flow())
 
 
 if __name__ == "__main__":

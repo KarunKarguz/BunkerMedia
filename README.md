@@ -12,6 +12,7 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Operations guide: `docs/OPERATIONS.md`
 - Security hardening checklist: `docs/SECURITY_HARDENING_CHECKLIST.md`
 - Security CI workflow: `.github/workflows/security.yml`
+- Release security artifacts: SBOM + checksums in tagged releases
 
 ## Features
 

@@ -46,4 +46,5 @@ Use this checklist for pre-release and periodic hardening reviews.
 - [ ] CI green on all supported Python versions.
 - [ ] Migration checks and schema version verified.
 - [ ] Changelog and roadmap updates completed.
+- [ ] SBOM (`bunkermedia-sbom.cdx.json`) and `sha256sums.txt` attached to release.
 - [ ] Security checklist reviewed and signed off.

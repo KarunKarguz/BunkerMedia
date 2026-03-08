@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -45,19 +46,21 @@ class ProviderAcquirePayload(BaseModel):
 
 def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     service = BunkerService(config_path=config_path)
-    app = FastAPI(title="BunkerMedia", version="0.1.0")
     ui_root = Path(__file__).resolve().parent / "ui"
     sync_lock = asyncio.Lock()
 
-    @app.on_event("startup")
-    async def on_startup() -> None:
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
         await service.initialize()
         if service.config.auto_start_workers:
             await service.workers.start()
+        try:
+            yield
+        finally:
+            await service.shutdown()
 
-    @app.on_event("shutdown")
-    async def on_shutdown() -> None:
-        await service.shutdown()
+    app = FastAPI(title="BunkerMedia", version="0.1.0", lifespan=lifespan)
+    app.state.service = service
 
     @app.middleware("http")
     async def metrics_middleware(request, call_next):

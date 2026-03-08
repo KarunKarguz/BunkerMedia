@@ -89,8 +89,14 @@ sudo systemctl start bunkermedia
 - Actions:
   - compile and run test suite gate,
   - build source and wheel artifacts,
+  - generate CycloneDX SBOM and dependency manifest,
+  - generate SHA256 checksums for release files,
   - upload CI artifacts,
   - publish GitHub release with generated notes.
+- Release artifacts now include:
+  - `bunkermedia-sbom.cdx.json`
+  - `dependencies.txt`
+  - `sha256sums.txt`
 
 ## Security Review
 
