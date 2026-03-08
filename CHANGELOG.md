@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.8] - 2026-03-08
+
+### Added
+
+- Offline horizon planner to queue recommended content toward configurable target hours.
+- Storage budget policy manager with watched/low-score eviction modes and liked-content protection.
+- New CLI/API controls for offline planning and storage enforcement.
+- Schema migration for `duration_seconds` and `file_size_bytes` video metadata.
+
+### Changed
+
+- Downloader/scraper/local provider now persist duration/file-size metadata used by planner and eviction logic.
+- Service sync and worker recommendation cycles now run planner + storage policy maintenance.
+
 ## [0.1.7] - 2026-03-08
 
 ### Added

@@ -52,6 +52,17 @@ class AppConfig:
     connectivity_check_timeout_seconds: float = 2.0
     sync_windows: list[str] = field(default_factory=list)
     backup_path: Path | None = None
+    offline_target_hours: float = 8.0
+    offline_planner_max_candidates: int = 200
+    offline_planner_batch_size: int = 20
+    offline_default_video_minutes: int = 20
+    offline_estimated_mbps: float = 1.2
+    offline_queue_priority: int = 2
+    storage_max_gb: float = 0.0
+    storage_reserve_gb: float = 1.0
+    storage_eviction_policy: str = "watched_oldest"
+    storage_protect_liked: bool = True
+    storage_eviction_batch_size: int = 25
 
     @property
     def logs_dir(self) -> Path:
@@ -98,6 +109,17 @@ class AppConfig:
                 if raw.get("backup_path")
                 else cls._resolve_path(base_dir, "./backups")
             ),
+            offline_target_hours=float(raw.get("offline_target_hours", 8.0)),
+            offline_planner_max_candidates=int(raw.get("offline_planner_max_candidates", 200)),
+            offline_planner_batch_size=int(raw.get("offline_planner_batch_size", 20)),
+            offline_default_video_minutes=int(raw.get("offline_default_video_minutes", 20)),
+            offline_estimated_mbps=float(raw.get("offline_estimated_mbps", 1.2)),
+            offline_queue_priority=int(raw.get("offline_queue_priority", 2)),
+            storage_max_gb=float(raw.get("storage_max_gb", 0.0)),
+            storage_reserve_gb=float(raw.get("storage_reserve_gb", 1.0)),
+            storage_eviction_policy=str(raw.get("storage_eviction_policy", "watched_oldest")).strip().lower(),
+            storage_protect_liked=bool(raw.get("storage_protect_liked", True)),
+            storage_eviction_batch_size=int(raw.get("storage_eviction_batch_size", 25)),
         )
 
     @staticmethod

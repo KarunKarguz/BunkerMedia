@@ -63,6 +63,12 @@ class Scraper:
             if source_url and not source_url.startswith("http"):
                 source_url = f"https://www.youtube.com/watch?v={video_id}"
             upload_date = entry.get("upload_date")
+            duration_seconds = None
+            if entry.get("duration") is not None:
+                try:
+                    duration_seconds = max(0, int(entry.get("duration")))
+                except (TypeError, ValueError):
+                    duration_seconds = None
 
             meta = VideoMetadata(
                 video_id=video_id,
@@ -70,6 +76,7 @@ class Scraper:
                 channel=channel,
                 upload_date=str(upload_date) if upload_date else None,
                 source_url=source_url,
+                duration_seconds=duration_seconds,
                 downloaded=False,
             )
             self.db.upsert_video(meta)

@@ -5,8 +5,11 @@ from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
 from bunkermedia.intelligence import build_hash_embedding, cosine_similarity
 from bunkermedia.maintenance import backup_state, restore_state
+from bunkermedia.models import Recommendation, VideoMetadata
 from bunkermedia.network import NetworkStateManager
+from bunkermedia.planner import OfflinePlanner
 from bunkermedia.service import BunkerService
+from bunkermedia.storage_policy import StoragePolicyManager
 
 
 def test_config_defaults(tmp_path: Path) -> None:
@@ -17,7 +20,7 @@ def test_config_defaults(tmp_path: Path) -> None:
 def test_database_init(tmp_path: Path) -> None:
     db = Database(tmp_path / "test.db")
     db.initialize()
-    assert db.get_schema_version() >= 3
+    assert db.get_schema_version() >= 4
     db.close()
 
 
@@ -122,8 +125,8 @@ def test_schema_migrations_list(tmp_path: Path) -> None:
     db = Database(tmp_path / "schema.db")
     db.initialize()
     migrations = db.list_schema_migrations()
-    assert len(migrations) >= 3
-    assert migrations[-1]["version"] >= 3
+    assert len(migrations) >= 4
+    assert migrations[-1]["version"] >= 4
     db.close()
 
 
@@ -152,3 +155,122 @@ def test_service_provider_registry(tmp_path: Path) -> None:
         await service.shutdown()
 
     asyncio.run(_run())
+
+
+def test_offline_planner_queues_to_target(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "download_path: ./media",
+                "database_path: ./planner.db",
+                "download_archive: ./archive.txt",
+                "offline_target_hours: 1",
+                "offline_planner_batch_size: 5",
+                "offline_default_video_minutes: 20",
+                "offline_queue_priority: 4",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    cfg = AppConfig.from_yaml(cfg_path)
+    db = Database(cfg.database_path)
+    db.initialize()
+    db.upsert_video(
+        VideoMetadata(
+            video_id="seed_1",
+            title="Seed 1",
+            channel="Test",
+            source_url="https://example.invalid/1",
+            duration_seconds=1800,
+            downloaded=False,
+        )
+    )
+    db.upsert_video(
+        VideoMetadata(
+            video_id="seed_2",
+            title="Seed 2",
+            channel="Test",
+            source_url="https://example.invalid/2",
+            duration_seconds=2000,
+            downloaded=False,
+        )
+    )
+
+    class _FakeRecommender:
+        async def recommend(self, limit: int = 20, explain: bool = False):
+            return [
+                Recommendation("seed_1", "Seed 1", "Test", 1.0, False, None),
+                Recommendation("seed_2", "Seed 2", "Test", 0.9, False, None),
+            ]
+
+    planner = OfflinePlanner(cfg, db, _FakeRecommender(), logger=type("L", (), {"info": lambda *a, **k: None})())
+    result = asyncio.run(planner.plan_once())
+    assert result["status"] == "ok"
+    assert int(result["queued_jobs"]) >= 2
+    jobs = db.list_download_jobs(status="pending", limit=10)
+    assert len(jobs) >= 2
+    db.close()
+
+
+def test_storage_policy_enforces_budget(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "download_path: ./media",
+                "database_path: ./storage.db",
+                "download_archive: ./archive.txt",
+                "storage_max_gb: 0.000001",
+                "storage_eviction_batch_size: 5",
+                "storage_protect_liked: true",
+                "storage_eviction_policy: watched_oldest",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    cfg = AppConfig.from_yaml(cfg_path)
+    db = Database(cfg.database_path)
+    db.initialize()
+
+    media_root = tmp_path / "media"
+    media_root.mkdir(parents=True, exist_ok=True)
+    keep_file = media_root / "keep.mp4"
+    evict_file = media_root / "evict.mp4"
+    keep_file.write_bytes(b"a" * 800)
+    evict_file.write_bytes(b"b" * 800)
+
+    db.upsert_video(
+        VideoMetadata(
+            video_id="keep",
+            title="Keep",
+            channel="Test",
+            local_path=str(keep_file),
+            file_size_bytes=800,
+            downloaded=True,
+        )
+    )
+    db.mark_downloaded("keep", str(keep_file), file_size_bytes=800)
+    db.mark_watched("keep", liked=True, completed=True, watch_seconds=120)
+
+    db.upsert_video(
+        VideoMetadata(
+            video_id="evict",
+            title="Evict",
+            channel="Test",
+            local_path=str(evict_file),
+            file_size_bytes=800,
+            downloaded=True,
+        )
+    )
+    db.mark_downloaded("evict", str(evict_file), file_size_bytes=800)
+    db.mark_watched("evict", liked=False, completed=True, watch_seconds=120)
+
+    manager = StoragePolicyManager(cfg, db, logger=type("L", (), {"info": lambda *a, **k: None})())
+    result = manager.enforce_once()
+    assert result["status"] == "ok"
+    assert int(result["evicted_files"]) >= 1
+    assert keep_file.exists()
+    assert not evict_file.exists()
+    assert int(db.get_video("evict")["downloaded"]) == 0
+    db.close()

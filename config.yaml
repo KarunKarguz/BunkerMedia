@@ -31,3 +31,14 @@ connectivity_check_port: 53
 connectivity_check_timeout_seconds: 2.0
 sync_windows: []
 backup_path: ./backups
+offline_target_hours: 8
+offline_planner_max_candidates: 200
+offline_planner_batch_size: 20
+offline_default_video_minutes: 20
+offline_estimated_mbps: 1.2
+offline_queue_priority: 2
+storage_max_gb: 0
+storage_reserve_gb: 1
+storage_eviction_policy: watched_oldest
+storage_protect_liked: true
+storage_eviction_batch_size: 25

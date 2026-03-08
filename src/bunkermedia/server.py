@@ -139,6 +139,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             "queue": queue,
             "deadletters": deadletters,
             "offline_mode": not service.network.is_online,
+            "offline_inventory": service.get_offline_inventory(),
         }
 
     @app.post("/bunku/data/sync")
@@ -153,6 +154,18 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     async def health() -> dict[str, object]:
         await service.refresh_network_state()
         return service.get_health_state()
+
+    @app.get("/offline/inventory")
+    async def offline_inventory():
+        return service.get_offline_inventory()
+
+    @app.post("/offline/plan")
+    async def offline_plan():
+        return await service.plan_offline_queue()
+
+    @app.post("/storage/enforce")
+    async def storage_enforce():
+        return service.enforce_storage_policy()
 
     @app.get("/schema")
     async def schema():

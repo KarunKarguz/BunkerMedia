@@ -26,6 +26,8 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Bunku Mode local-first web UI (`/bunku`) with rails, queue panel, and feedback controls
 - FastAPI media server
 - Async background workers for sync and queued downloads
+- Offline horizon planner for auto-queuing watch-ready content
+- Storage budget policy with automated eviction
 - Prometheus-style metrics endpoint (`/metrics`) and queue/dead-letter observability
 - Schema migration/version tracking (`schema_migrations`)
 - Provider plugin framework with built-in `youtube` provider
@@ -66,6 +68,17 @@ Edit `config.yaml`:
 - `connectivity_check_host` / `connectivity_check_port`
 - `sync_windows` (e.g. `["00:00-06:00","21:00-23:59"]`)
 - `backup_path`
+- `offline_target_hours`
+- `offline_planner_max_candidates`
+- `offline_planner_batch_size`
+- `offline_default_video_minutes`
+- `offline_estimated_mbps`
+- `offline_queue_priority`
+- `storage_max_gb`
+- `storage_reserve_gb`
+- `storage_eviction_policy` (`watched_oldest` or `low_score`)
+- `storage_protect_liked`
+- `storage_eviction_batch_size`
 - `rss_feeds`
 - `local_watch_folders`
 
@@ -85,6 +98,8 @@ bunker jobs --status pending --limit 50
 bunker deadletters --limit 50
 bunker retry-dead --all
 bunker status --json
+bunker plan-offline --json
+bunker storage-enforce --json
 bunker providers
 bunker discover --provider youtube --source trending --limit 20
 bunker discover --provider rss --source https://example.com/feed.xml --limit 20
@@ -102,6 +117,9 @@ bunker serve --host 0.0.0.0 --port 8080
 - `GET /metrics`
 - `GET /schema`
 - `GET /providers`
+- `GET /offline/inventory`
+- `POST /offline/plan`
+- `POST /storage/enforce`
 - `GET /discover?provider=youtube&source=trending&limit=20`
 - `POST /acquire`
 - `GET /bunku`

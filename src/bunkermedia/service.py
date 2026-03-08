@@ -11,9 +11,11 @@ from bunkermedia.logging_utils import setup_logging
 from bunkermedia.maintenance import backup_state, restore_state
 from bunkermedia.metrics import MetricsRegistry
 from bunkermedia.network import NetworkStateManager
+from bunkermedia.planner import OfflinePlanner
 from bunkermedia.providers import LocalFolderProvider, ProviderRegistry, RSSProvider, YouTubeProvider
 from bunkermedia.recommender import RecommendationEngine
 from bunkermedia.scraper import Scraper
+from bunkermedia.storage_policy import StoragePolicyManager
 from bunkermedia.workers import WorkerManager
 
 
@@ -34,6 +36,8 @@ class BunkerService:
             max_text_chars=self.config.transcript_max_chars,
         )
         self.recommender = RecommendationEngine(self.db, self.logger)
+        self.offline_planner = OfflinePlanner(self.config, self.db, self.recommender, self.logger)
+        self.storage_policy = StoragePolicyManager(self.config, self.db, self.logger)
         self.providers = ProviderRegistry()
         self.providers.register(YouTubeProvider(self.scraper, self.downloader))
         self.providers.register(RSSProvider(self.db, self.downloader, self.logger))
@@ -48,6 +52,8 @@ class BunkerService:
             self.logger,
             self.network,
             self.metrics,
+            self.offline_planner,
+            self.storage_policy,
         )
         self._initialized = False
 
@@ -109,7 +115,20 @@ class BunkerService:
         if self.config.local_watch_folders:
             await self.discover(provider="local", source="default", limit=2000)
 
+        storage_before = self.enforce_storage_policy()
+        if str(storage_before.get("status")) == "ok":
+            self.metrics.inc("storage_enforcement_total")
+
+        plan = await self.plan_offline_queue()
+        if int(plan.get("queued_jobs") or 0) > 0:
+            self.metrics.inc("offline_planner_runs_total")
+            self.metrics.inc("offline_planner_queued_jobs_total", int(plan.get("queued_jobs") or 0))
+
         await self.workers.process_download_queue_once()
+        storage_after = self.enforce_storage_policy()
+        if str(storage_after.get("status")) == "ok":
+            self.metrics.inc("storage_enforcement_total")
+
         await self.intelligence.refresh_embeddings(limit=self.config.intelligence_batch_size)
         await self.recommender.refresh_scores()
         self.metrics.inc("sync_completed_total")
@@ -184,6 +203,22 @@ class BunkerService:
         self.metrics.set_gauge("network_online", 1.0 if online else 0.0)
         return online
 
+    async def plan_offline_queue(self) -> dict[str, object]:
+        result = await self.offline_planner.plan_once()
+        self.metrics.set_gauge("offline_available_seconds", float(int(result.get("available_seconds") or 0)))
+        self.metrics.set_gauge("offline_target_seconds", float(int(result.get("target_seconds") or 0)))
+        self.metrics.set_gauge("offline_queued_seconds_last", float(int(result.get("queued_duration_seconds") or 0)))
+        return result
+
+    def enforce_storage_policy(self) -> dict[str, object]:
+        result = self.storage_policy.enforce_once()
+        self.metrics.set_gauge("storage_freed_bytes_last", float(int(result.get("freed_bytes") or 0)))
+        self.metrics.set_gauge("storage_evicted_files_last", float(int(result.get("evicted_files") or 0)))
+        return result
+
+    def get_offline_inventory(self) -> dict[str, int]:
+        return self.db.get_offline_inventory_stats()
+
     def get_health_state(self) -> dict[str, object]:
         return {
             "status": "ok",
@@ -191,6 +226,7 @@ class BunkerService:
             "in_sync_window": self.network.in_sync_window(),
             "schema_version": self.db.get_schema_version(),
             "providers": self.list_providers(),
+            "offline_inventory": self.get_offline_inventory(),
         }
 
     def render_metrics(self) -> str:

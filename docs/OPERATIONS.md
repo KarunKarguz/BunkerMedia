@@ -53,12 +53,35 @@ Use these config keys:
 - `connectivity_check_port`
 - `connectivity_check_timeout_seconds`
 - `sync_windows`
+- `offline_target_hours`
+- `offline_planner_batch_size`
+- `storage_max_gb`
+- `storage_eviction_policy`
 
 `sync_windows` format examples:
 
 - `"00:00-06:00"`
 - `"21:00-23:59"`
 - Overnight window: `"22:00-02:00"`
+
+## Offline Planner and Storage Policy
+
+Manual controls:
+
+```bash
+bunker plan-offline --json
+bunker storage-enforce --json
+```
+
+API controls:
+
+```bash
+curl -s http://localhost:8080/offline/inventory
+curl -s -X POST http://localhost:8080/offline/plan
+curl -s -X POST http://localhost:8080/storage/enforce
+```
+
+These operations are also run in background worker recommendation cycles.
 
 ## Deployment
 

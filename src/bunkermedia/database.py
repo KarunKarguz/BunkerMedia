@@ -33,6 +33,8 @@ class Database:
                     upload_date TEXT,
                     source_url TEXT,
                     local_path TEXT,
+                    duration_seconds INTEGER,
+                    file_size_bytes INTEGER DEFAULT 0,
                     downloaded INTEGER DEFAULT 0,
                     watched INTEGER DEFAULT 0,
                     liked INTEGER DEFAULT 0,
@@ -83,6 +85,7 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel);
                 CREATE INDEX IF NOT EXISTS idx_videos_downloaded ON videos(downloaded);
+                CREATE INDEX IF NOT EXISTS idx_videos_duration ON videos(duration_seconds);
                 CREATE INDEX IF NOT EXISTS idx_jobs_status ON download_jobs(status);
                 CREATE INDEX IF NOT EXISTS idx_history_video ON watch_history(video_id);
                 """
@@ -109,14 +112,16 @@ class Database:
                 """
                 INSERT INTO videos (
                     video_id, title, channel, upload_date, source_url, local_path,
-                    downloaded, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    duration_seconds, file_size_bytes, downloaded, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(video_id) DO UPDATE SET
                     title=excluded.title,
                     channel=excluded.channel,
                     upload_date=COALESCE(excluded.upload_date, videos.upload_date),
                     source_url=COALESCE(excluded.source_url, videos.source_url),
                     local_path=COALESCE(excluded.local_path, videos.local_path),
+                    duration_seconds=COALESCE(excluded.duration_seconds, videos.duration_seconds),
+                    file_size_bytes=MAX(videos.file_size_bytes, COALESCE(excluded.file_size_bytes, 0)),
                     downloaded=MAX(videos.downloaded, excluded.downloaded),
                     updated_at=excluded.updated_at
                 """,
@@ -127,6 +132,8 @@ class Database:
                     meta.upload_date,
                     meta.source_url,
                     meta.local_path,
+                    int(meta.duration_seconds) if meta.duration_seconds is not None else None,
+                    int(meta.file_size_bytes) if meta.file_size_bytes is not None else 0,
                     int(meta.downloaded),
                     now,
                     now,
@@ -134,15 +141,33 @@ class Database:
             )
             self.conn.commit()
 
-    def mark_downloaded(self, video_id: str, local_path: str) -> None:
+    def mark_downloaded(self, video_id: str, local_path: str, file_size_bytes: int | None = None) -> None:
+        size = file_size_bytes
+        if size is None:
+            try:
+                size = int(Path(local_path).stat().st_size)
+            except OSError:
+                size = 0
         with self._lock:
             self.conn.execute(
                 """
                 UPDATE videos
-                SET downloaded=1, local_path=?, updated_at=?
+                SET downloaded=1, local_path=?, file_size_bytes=COALESCE(?, file_size_bytes), updated_at=?
                 WHERE video_id=?
                 """,
-                (local_path, self._utc_now(), video_id),
+                (local_path, size, self._utc_now(), video_id),
+            )
+            self.conn.commit()
+
+    def clear_downloaded_state(self, video_id: str) -> None:
+        with self._lock:
+            self.conn.execute(
+                """
+                UPDATE videos
+                SET downloaded=0, local_path=NULL, file_size_bytes=0, updated_at=?
+                WHERE video_id=?
+                """,
+                (self._utc_now(), video_id),
             )
             self.conn.commit()
 
@@ -408,7 +433,8 @@ class Database:
     def list_videos(self, limit: int = 100, search: str | None = None) -> list[dict[str, Any]]:
         query = """
             SELECT v.video_id, v.title, v.channel, v.upload_date, v.local_path, v.downloaded,
-                   v.watched, v.liked, v.disliked, v.rating, v.rejected_reason, v.trending_score,
+                   v.duration_seconds, v.file_size_bytes, v.watched, v.liked, v.disliked,
+                   v.rating, v.rejected_reason, v.trending_score,
                    v.channel_preference, v.watch_score, v.source_url, v.updated_at,
                    COALESCE(i.transcript_source, 'none') AS transcript_source,
                    COALESCE(i.quality_score, 0.0) AS intelligence_quality
@@ -432,7 +458,8 @@ class Database:
             row = self.conn.execute(
                 """
                 SELECT v.video_id, v.title, v.channel, v.upload_date, v.local_path, v.downloaded,
-                       v.watched, v.liked, v.disliked, v.rating, v.rejected_reason, v.trending_score,
+                       v.duration_seconds, v.file_size_bytes, v.watched, v.liked, v.disliked,
+                       v.rating, v.rejected_reason, v.trending_score,
                        v.channel_preference, v.watch_score, v.source_url,
                        COALESCE(i.transcript_source, 'none') AS transcript_source,
                        COALESCE(i.quality_score, 0.0) AS intelligence_quality
@@ -599,6 +626,8 @@ class Database:
                     v.upload_date,
                     v.downloaded,
                     v.local_path,
+                    v.duration_seconds,
+                    v.file_size_bytes,
                     v.trending_score,
                     v.liked,
                     v.disliked,
@@ -612,6 +641,56 @@ class Database:
                 FROM videos v
                 LEFT JOIN video_intelligence i ON i.video_id=v.video_id
                 ORDER BY v.updated_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_pending_job_urls(self) -> set[str]:
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT DISTINCT url
+                FROM download_jobs
+                WHERE status IN ('pending', 'processing')
+                """
+            ).fetchall()
+        return {str(row["url"]) for row in rows if row["url"]}
+
+    def get_offline_inventory_stats(self) -> dict[str, int]:
+        with self._lock:
+            row = self.conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_downloaded_items,
+                    COALESCE(SUM(CASE WHEN watched=0 THEN COALESCE(duration_seconds, 0) ELSE 0 END), 0) AS unwatched_duration_seconds,
+                    COALESCE(SUM(COALESCE(file_size_bytes, 0)), 0) AS downloaded_storage_bytes
+                FROM videos
+                WHERE downloaded=1
+                """
+            ).fetchone()
+        if not row:
+            return {
+                "total_downloaded_items": 0,
+                "unwatched_duration_seconds": 0,
+                "downloaded_storage_bytes": 0,
+            }
+        return {
+            "total_downloaded_items": int(row["total_downloaded_items"] or 0),
+            "unwatched_duration_seconds": int(row["unwatched_duration_seconds"] or 0),
+            "downloaded_storage_bytes": int(row["downloaded_storage_bytes"] or 0),
+        }
+
+    def list_storage_candidates(self, limit: int = 1000) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT video_id, local_path, file_size_bytes, watched, liked, disliked, rating,
+                       rejected_reason, channel_preference, watch_score, trending_score, updated_at
+                FROM videos
+                WHERE downloaded=1 AND local_path IS NOT NULL AND local_path != ''
+                ORDER BY updated_at ASC
                 LIMIT ?
                 """,
                 (limit,),

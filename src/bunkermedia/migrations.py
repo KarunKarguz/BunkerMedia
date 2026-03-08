@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +59,7 @@ def _ordered_migrations() -> list[Migration]:
         Migration(1, "create_video_intelligence", _migration_create_video_intelligence),
         Migration(2, "download_retry_and_deadletter", _migration_download_retry_deadletter),
         Migration(3, "download_next_run_index", _migration_next_run_index),
+        Migration(4, "video_duration_and_file_size", _migration_video_duration_file_size),
     ]
 
 
@@ -121,6 +122,14 @@ def _migration_download_retry_deadletter(conn: "sqlite3.Connection") -> None:
 
 def _migration_next_run_index(conn: "sqlite3.Connection") -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_next_run ON download_jobs(next_run_at)")
+
+
+def _migration_video_duration_file_size(conn: "sqlite3.Connection") -> None:
+    if not _has_column(conn, "videos", "duration_seconds"):
+        conn.execute("ALTER TABLE videos ADD COLUMN duration_seconds INTEGER")
+    if not _has_column(conn, "videos", "file_size_bytes"):
+        conn.execute("ALTER TABLE videos ADD COLUMN file_size_bytes INTEGER DEFAULT 0")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_duration ON videos(duration_seconds)")
 
 
 def _has_column(conn: "sqlite3.Connection", table: str, column: str) -> bool:

@@ -26,6 +26,8 @@ class WorkerManager:
         logger: Any,
         network: NetworkStateManager,
         metrics: MetricsRegistry,
+        offline_planner: Any | None = None,
+        storage_policy: Any | None = None,
     ) -> None:
         self.config = config
         self.db = db
@@ -36,6 +38,8 @@ class WorkerManager:
         self.logger = logger
         self.network = network
         self.metrics = metrics
+        self.offline_planner = offline_planner
+        self.storage_policy = storage_policy
         self._stop_event = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
 
@@ -128,6 +132,14 @@ class WorkerManager:
 
     async def _run_recommendation_refresh(self) -> None:
         await self.recommender.refresh_scores()
+        if self.offline_planner is not None:
+            result = await self.offline_planner.plan_once()
+            self.metrics.inc("worker_offline_planner_runs_total")
+            self.metrics.inc("worker_offline_planner_queued_jobs_total", float(int(result.get("queued_jobs") or 0)))
+        if self.storage_policy is not None:
+            result = self.storage_policy.enforce_once()
+            self.metrics.inc("worker_storage_enforcement_total")
+            self.metrics.set_gauge("worker_storage_freed_bytes_last", float(int(result.get("freed_bytes") or 0)))
         self.metrics.inc("worker_recommendation_success_total")
 
     async def process_download_queue_once(self) -> None:

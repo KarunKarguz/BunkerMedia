@@ -36,7 +36,7 @@ class Downloader:
         for meta in videos:
             self.db.upsert_video(meta)
             if meta.local_path:
-                self.db.mark_downloaded(meta.video_id, meta.local_path)
+                self.db.mark_downloaded(meta.video_id, meta.local_path, file_size_bytes=meta.file_size_bytes)
         return videos
 
     def _download_sync(self, url: str, target_type: str) -> list[VideoMetadata]:
@@ -86,6 +86,26 @@ class Downloader:
                 source_url = f"https://www.youtube.com/watch?v={video_id}"
             upload_date = entry.get("upload_date")
             local_path = finished_paths.get(video_id) or entry.get("_filename")
+            duration_seconds = None
+            raw_duration = entry.get("duration")
+            if raw_duration is not None:
+                try:
+                    duration_seconds = max(0, int(raw_duration))
+                except (TypeError, ValueError):
+                    duration_seconds = None
+
+            file_size_bytes = None
+            raw_size = entry.get("filesize") or entry.get("filesize_approx")
+            if raw_size is not None:
+                try:
+                    file_size_bytes = max(0, int(raw_size))
+                except (TypeError, ValueError):
+                    file_size_bytes = None
+            if local_path and (file_size_bytes is None or file_size_bytes <= 0):
+                try:
+                    file_size_bytes = int(Path(str(local_path)).stat().st_size)
+                except OSError:
+                    file_size_bytes = None
 
             meta = VideoMetadata(
                 video_id=video_id,
@@ -94,6 +114,8 @@ class Downloader:
                 upload_date=str(upload_date) if upload_date else None,
                 source_url=source_url,
                 local_path=str(local_path) if local_path else None,
+                duration_seconds=duration_seconds,
+                file_size_bytes=file_size_bytes,
                 downloaded=bool(local_path),
             )
             videos.append(meta)

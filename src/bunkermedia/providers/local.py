@@ -64,6 +64,7 @@ class LocalFolderProvider(Provider):
                 rel = str(path.resolve())
                 vid = f"local_{hashlib.sha1(rel.encode('utf-8')).hexdigest()[:16]}"
                 upload_date = self._file_date(path)
+                file_size_bytes = self._file_size(path)
                 channel = path.parent.name or root.name or "Local"
 
                 meta = VideoMetadata(
@@ -73,10 +74,11 @@ class LocalFolderProvider(Provider):
                     upload_date=upload_date,
                     source_url=str(path),
                     local_path=str(path),
+                    file_size_bytes=file_size_bytes,
                     downloaded=True,
                 )
                 self.db.upsert_video(meta)
-                self.db.mark_downloaded(meta.video_id, meta.local_path or str(path))
+                self.db.mark_downloaded(meta.video_id, meta.local_path or str(path), file_size_bytes=file_size_bytes)
                 results.append(meta)
 
                 if len(results) >= target:
@@ -95,3 +97,10 @@ class LocalFolderProvider(Provider):
         from datetime import datetime
 
         return datetime.fromtimestamp(ts).strftime("%Y%m%d")
+
+    @staticmethod
+    def _file_size(path: Path) -> int:
+        try:
+            return int(path.stat().st_size)
+        except OSError:
+            return 0

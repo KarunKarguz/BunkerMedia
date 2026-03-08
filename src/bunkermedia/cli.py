@@ -50,6 +50,12 @@ def _build_parser() -> argparse.ArgumentParser:
     status_cmd = sub.add_parser("status", help="Show runtime status")
     status_cmd.add_argument("--json", action="store_true", help="Output JSON")
 
+    plan_cmd = sub.add_parser("plan-offline", help="Queue downloads to satisfy offline target horizon")
+    plan_cmd.add_argument("--json", action="store_true", help="Output JSON")
+
+    storage_cmd = sub.add_parser("storage-enforce", help="Enforce storage budget policy")
+    storage_cmd.add_argument("--json", action="store_true", help="Output JSON")
+
     providers_cmd = sub.add_parser("providers", help="List configured source providers")
 
     discover_cmd = sub.add_parser("discover", help="Discover metadata via provider")
@@ -183,6 +189,7 @@ async def _cmd_status(args: argparse.Namespace) -> None:
     status["jobs_processing"] = len(service.list_download_jobs(status="processing", limit=5000))
     status["jobs_dead"] = len(service.list_download_jobs(status="dead", limit=5000))
     status["deadletters"] = len(service.list_dead_letter_jobs(limit=5000))
+    status["offline_inventory"] = service.get_offline_inventory()
     if args.json:
         print(json.dumps(status, separators=(",", ":"), ensure_ascii=True))
     else:
@@ -197,6 +204,32 @@ async def _cmd_status(args: argparse.Namespace) -> None:
             "deadletters",
         ]:
             print(f"{key}: {status[key]}")
+    await service.shutdown()
+
+
+async def _cmd_plan_offline(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    result = await service.plan_offline_queue()
+    if args.json:
+        print(json.dumps(result, separators=(",", ":"), ensure_ascii=True))
+    else:
+        print(f"status: {result.get('status')}")
+        print(f"queued_jobs: {result.get('queued_jobs', 0)}")
+        print(f"queued_duration_seconds: {result.get('queued_duration_seconds', 0)}")
+    await service.shutdown()
+
+
+async def _cmd_storage_enforce(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    result = service.enforce_storage_policy()
+    if args.json:
+        print(json.dumps(result, separators=(",", ":"), ensure_ascii=True))
+    else:
+        print(f"status: {result.get('status')}")
+        print(f"evicted_files: {result.get('evicted_files', 0)}")
+        print(f"freed_bytes: {result.get('freed_bytes', 0)}")
     await service.shutdown()
 
 
@@ -315,6 +348,12 @@ def main() -> None:
         return
     if args.command == "status":
         asyncio.run(_cmd_status(args))
+        return
+    if args.command == "plan-offline":
+        asyncio.run(_cmd_plan_offline(args))
+        return
+    if args.command == "storage-enforce":
+        asyncio.run(_cmd_storage_enforce(args))
         return
     if args.command == "providers":
         asyncio.run(_cmd_providers(args))

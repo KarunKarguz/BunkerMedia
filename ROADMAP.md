@@ -72,8 +72,8 @@ Usable in intermittent/no-internet environments.
 
 - [x] Network state detector (offline/online transitions).
 - [x] Sync windows and bandwidth-aware scheduling.
-- [ ] Download planner for "offline horizon" (e.g., next 3 days).
-- [ ] Storage budget policies (keep/watch/evict strategy).
+- [x] Download planner for "offline horizon" (e.g., next 3 days).
+- [x] Storage budget policies (keep/watch/evict strategy).
 - [ ] Resumable background download batches.
 
 ### Exit Criteria
@@ -167,7 +167,7 @@ Production-grade open-source release for broad self-hosting.
 
 ## Next 4-Week Execution Plan
 
-1. Build storage/offline planner with configurable target horizon and storage budget.
+1. Add resumable background download batches and partial-recovery logic.
 2. Expand Bunku Mode controls (filters, explicit "why this", queue management actions).
 3. Add optional authentication layer for non-LAN exposure.
 4. Add community provider adapter registry and validation policy.

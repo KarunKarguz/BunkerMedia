@@ -190,6 +190,9 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("/acquire", paths)
             self.assertIn("/schema", paths)
             self.assertIn("/metrics", paths)
+            self.assertIn("/offline/inventory", paths)
+            self.assertIn("/offline/plan", paths)
+            self.assertIn("/storage/enforce", paths)
 
             async def _exercise_api() -> None:
                 async with app.router.lifespan_context(app):
@@ -209,6 +212,18 @@ class IntegrationTests(unittest.TestCase):
                         payload = discovered.json()
                         self.assertGreaterEqual(len(payload), 1)
                         self.assertTrue(str(payload[0]["video_id"]).startswith("local_"))
+
+                        inventory = await client.get("/offline/inventory")
+                        self.assertEqual(inventory.status_code, 200)
+                        self.assertIn("downloaded_storage_bytes", inventory.json())
+
+                        planned = await client.post("/offline/plan")
+                        self.assertEqual(planned.status_code, 200)
+                        self.assertIn("status", planned.json())
+
+                        storage = await client.post("/storage/enforce")
+                        self.assertEqual(storage.status_code, 200)
+                        self.assertIn("status", storage.json())
 
             asyncio.run(_exercise_api())
 
