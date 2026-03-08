@@ -81,3 +81,20 @@ sudo systemctl daemon-reload
 sudo systemctl enable bunkermedia
 sudo systemctl start bunkermedia
 ```
+
+## Release Automation
+
+- GitHub workflow: `.github/workflows/release.yml`
+- Trigger: push tag matching `v*` (for example `v0.1.4`).
+- Actions:
+  - compile and run test suite gate,
+  - build source and wheel artifacts,
+  - upload CI artifacts,
+  - publish GitHub release with generated notes.
+
+## Security Review
+
+Before release, run through:
+
+- `docs/SECURITY_HARDENING_CHECKLIST.md`
+- `.github/workflows/security.yml` (`pip-audit` on PR/push + weekly schedule)

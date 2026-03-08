@@ -34,6 +34,8 @@ class AppConfig:
     server: ServerConfig = field(default_factory=ServerConfig)
     channel_feeds: list[str] = field(default_factory=list)
     playlist_feeds: list[str] = field(default_factory=list)
+    rss_feeds: list[str] = field(default_factory=list)
+    local_watch_folders: list[Path] = field(default_factory=list)
     prefer_low_power_mode: bool = True
     auto_start_workers: bool = True
     embedding_dim: int = 128
@@ -74,6 +76,8 @@ class AppConfig:
             server=server,
             channel_feeds=list(raw.get("channel_feeds", [])),
             playlist_feeds=list(raw.get("playlist_feeds", [])),
+            rss_feeds=list(raw.get("rss_feeds", [])),
+            local_watch_folders=cls._resolve_paths(base_dir, raw.get("local_watch_folders", [])),
             prefer_low_power_mode=bool(raw.get("prefer_low_power_mode", True)),
             auto_start_workers=bool(raw.get("auto_start_workers", True)),
             embedding_dim=int(raw.get("embedding_dim", 128)),
@@ -102,6 +106,17 @@ class AppConfig:
         if not path.is_absolute():
             path = base_dir / path
         return path.resolve()
+
+    @classmethod
+    def _resolve_paths(cls, base_dir: Path, values: Any) -> list[Path]:
+        if not isinstance(values, list):
+            return []
+        paths: list[Path] = []
+        for value in values:
+            if value is None:
+                continue
+            paths.append(cls._resolve_path(base_dir, value))
+        return paths
 
     @staticmethod
     def _read_yaml(path: Path) -> dict[str, Any]:

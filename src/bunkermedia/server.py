@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -210,23 +211,25 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
 
     @app.get("/discover")
     async def discover(provider: str = "youtube", source: str = "", limit: int = Query(20, ge=1, le=200)):
-        if not source.strip():
+        if not source.strip() and provider.strip().lower() != "local":
             raise HTTPException(status_code=400, detail="source is required")
+        discover_source = source if source.strip() else "default"
         try:
-            items = await service.discover(provider=provider, source=source, limit=limit)
+            items = await service.discover(provider=provider, source=discover_source, limit=limit)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return [item.__dict__ for item in items]
+        return [asdict(item) for item in items]
 
     @app.post("/acquire")
     async def acquire(payload: ProviderAcquirePayload):
-        if not payload.source.strip():
+        if not payload.source.strip() and payload.provider.strip().lower() != "local":
             raise HTTPException(status_code=400, detail="source is required")
+        acquire_source = payload.source if payload.source.strip() else "default"
         try:
-            items = await service.acquire(provider=payload.provider, source=payload.source, mode=payload.mode)
+            items = await service.acquire(provider=payload.provider, source=acquire_source, mode=payload.mode)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return [item.__dict__ for item in items]
+        return [asdict(item) for item in items]
 
     @app.get("/jobs")
     async def list_jobs(
@@ -249,7 +252,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     @app.get("/recommendations")
     async def recommendations(limit: int = Query(20, ge=1, le=100), explain: bool = False):
         recs = await service.recommend(limit=limit, explain=explain)
-        return [rec.__dict__ for rec in recs]
+        return [asdict(rec) for rec in recs]
 
     @app.post("/videos/{video_id}/watched")
     async def mark_watched(video_id: str, payload: MarkWatchedPayload):

@@ -29,6 +29,8 @@ BunkerMedia is organized into these runtime layers:
 - `providers/base.py`: provider contract
 - `providers/registry.py`: provider registration and lookup
 - `providers/youtube.py`: built-in YouTube provider
+- `providers/rss.py`: RSS/Atom discovery and acquisition
+- `providers/local.py`: local-folder discovery provider
 
 ## Data Flow
 

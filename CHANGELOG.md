@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.4] - 2026-03-08
+
+### Added
+
+- RSS provider and local-folder provider via plugin architecture.
+- Integration test harness (`tests/test_integration.py`) with mocked downloader/network components.
+- Security hardening checklist document.
+- Tag-triggered release workflow for build/test/build artifacts and GitHub releases.
+- Security CI workflow (`pip-audit`) for dependency vulnerability scans.
+
 ## [0.1.3] - 2026-03-08
 
 ### Added

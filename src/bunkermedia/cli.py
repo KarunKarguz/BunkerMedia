@@ -54,12 +54,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     discover_cmd = sub.add_parser("discover", help="Discover metadata via provider")
     discover_cmd.add_argument("--provider", default="youtube")
-    discover_cmd.add_argument("--source", required=True, help="Source selector (e.g. trending or URL)")
+    discover_cmd.add_argument("--source", default="", help="Source selector (e.g. trending, URL, or folder)")
     discover_cmd.add_argument("--limit", type=int, default=20)
 
     acquire_cmd = sub.add_parser("acquire", help="Acquire content via provider")
     acquire_cmd.add_argument("--provider", default="youtube")
-    acquire_cmd.add_argument("--source", required=True, help="Source URL or selector")
+    acquire_cmd.add_argument("--source", default="", help="Source URL, selector, or folder")
     acquire_cmd.add_argument("--mode", default="auto", choices=["auto", "single", "playlist", "channel", "trending"])
 
     schema_cmd = sub.add_parser("schema", help="Show DB schema version and migrations")
@@ -212,8 +212,13 @@ async def _cmd_providers(args: argparse.Namespace) -> None:
 async def _cmd_discover(args: argparse.Namespace) -> None:
     service = BunkerService(config_path=args.config)
     await service.initialize()
+    if not str(args.source).strip() and str(args.provider).strip().lower() != "local":
+        print("source is required")
+        await service.shutdown()
+        return
+    source = args.source if str(args.source).strip() else "default"
     try:
-        items = await service.discover(provider=args.provider, source=args.source, limit=int(args.limit))
+        items = await service.discover(provider=args.provider, source=source, limit=int(args.limit))
     except KeyError as exc:
         print(str(exc))
         await service.shutdown()
@@ -229,8 +234,13 @@ async def _cmd_discover(args: argparse.Namespace) -> None:
 async def _cmd_acquire(args: argparse.Namespace) -> None:
     service = BunkerService(config_path=args.config)
     await service.initialize()
+    if not str(args.source).strip() and str(args.provider).strip().lower() != "local":
+        print("source is required")
+        await service.shutdown()
+        return
+    source = args.source if str(args.source).strip() else "default"
     try:
-        items = await service.acquire(provider=args.provider, source=args.source, mode=args.mode)
+        items = await service.acquire(provider=args.provider, source=source, mode=args.mode)
     except KeyError as exc:
         print(str(exc))
         await service.shutdown()

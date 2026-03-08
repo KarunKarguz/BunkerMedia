@@ -10,6 +10,8 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Architecture notes: `docs/ARCHITECTURE.md`
 - Bunku Mode UI spec: `docs/BUNKU_MODE_UI.md`
 - Operations guide: `docs/OPERATIONS.md`
+- Security hardening checklist: `docs/SECURITY_HARDENING_CHECKLIST.md`
+- Security CI workflow: `.github/workflows/security.yml`
 
 ## Features
 
@@ -24,6 +26,7 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Prometheus-style metrics endpoint (`/metrics`) and queue/dead-letter observability
 - Schema migration/version tracking (`schema_migrations`)
 - Provider plugin framework with built-in `youtube` provider
+- Additional built-in providers: `rss` and `local`
 - CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker serve`, `bunker status`, `bunker backup`, `bunker restore`, `bunker providers`, `bunker discover`, `bunker schema`
 
 ## Install
@@ -60,6 +63,8 @@ Edit `config.yaml`:
 - `connectivity_check_host` / `connectivity_check_port`
 - `sync_windows` (e.g. `["00:00-06:00","21:00-23:59"]`)
 - `backup_path`
+- `rss_feeds`
+- `local_watch_folders`
 
 Optional feed seeds:
 
@@ -79,6 +84,8 @@ bunker retry-dead --all
 bunker status --json
 bunker providers
 bunker discover --provider youtube --source trending --limit 20
+bunker discover --provider rss --source https://example.com/feed.xml --limit 20
+bunker discover --provider local --source default --limit 20
 bunker backup --output-dir ./backups
 bunker restore ./backups/bunkermedia-backup-YYYYMMDDTHHMMSSZ.tar.gz --force
 bunker schema --json

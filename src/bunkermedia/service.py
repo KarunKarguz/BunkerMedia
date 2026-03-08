@@ -11,7 +11,7 @@ from bunkermedia.logging_utils import setup_logging
 from bunkermedia.maintenance import backup_state, restore_state
 from bunkermedia.metrics import MetricsRegistry
 from bunkermedia.network import NetworkStateManager
-from bunkermedia.providers import ProviderRegistry, YouTubeProvider
+from bunkermedia.providers import LocalFolderProvider, ProviderRegistry, RSSProvider, YouTubeProvider
 from bunkermedia.recommender import RecommendationEngine
 from bunkermedia.scraper import Scraper
 from bunkermedia.workers import WorkerManager
@@ -36,6 +36,8 @@ class BunkerService:
         self.recommender = RecommendationEngine(self.db, self.logger)
         self.providers = ProviderRegistry()
         self.providers.register(YouTubeProvider(self.scraper, self.downloader))
+        self.providers.register(RSSProvider(self.db, self.downloader, self.logger))
+        self.providers.register(LocalFolderProvider(self.db, self.logger, self.config.local_watch_folders))
         self.workers = WorkerManager(
             self.config,
             self.db,
@@ -92,6 +94,20 @@ class BunkerService:
 
         for playlist in self.config.playlist_feeds:
             await self.scraper.fetch_playlist_metadata(playlist, limit=100)
+
+        for rss in self.config.rss_feeds:
+            items = await self.discover(provider="rss", source=rss, limit=100)
+            for item in items:
+                existing = self.get_video(item.video_id)
+                if not existing:
+                    continue
+                if int(existing.get("downloaded") or 0):
+                    continue
+                if item.source_url:
+                    await self.add_url(item.source_url, target_type="auto", priority=1)
+
+        if self.config.local_watch_folders:
+            await self.discover(provider="local", source="default", limit=2000)
 
         await self.workers.process_download_queue_once()
         await self.intelligence.refresh_embeddings(limit=self.config.intelligence_batch_size)

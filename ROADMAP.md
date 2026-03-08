@@ -54,7 +54,7 @@ Solid single-user CLI/API with stable acquisition and ranking.
 - [x] Metrics endpoint (queue depth, retries, dead-letter, recommendation latency).
 - [x] Structured log mode (JSON).
 - [x] Backup/restore for DB/archive state.
-- [ ] Integration tests for queue/reco/api flow.
+- [x] Integration tests for queue/reco/api flow.
 
 ### Exit Criteria
 
@@ -70,8 +70,8 @@ Usable in intermittent/no-internet environments.
 
 ### Scope
 
-- [ ] Network state detector (offline/online transitions).
-- [ ] Sync windows and bandwidth-aware scheduling.
+- [x] Network state detector (offline/online transitions).
+- [x] Sync windows and bandwidth-aware scheduling.
 - [ ] Download planner for "offline horizon" (e.g., next 3 days).
 - [ ] Storage budget policies (keep/watch/evict strategy).
 - [ ] Resumable background download batches.
@@ -91,7 +91,7 @@ Deliver a local "Bunker Mode Netflix" interface for family-friendly usage.
 ### Scope
 
 - [x] Web UI shell with TV-friendly browsing.
-- [ ] Home screen rails: Continue Watching, Downloaded, Recommended, New.
+- [x] Home screen rails: Continue Watching, Downloaded, Recommended, New.
 - [ ] Search + filters (duration, channel, freshness, downloaded-only).
 - [ ] Recommendation cards with "Why this" explanation.
 - [ ] Feedback controls: Like, Dislike, Not Interested, Hide Channel.
@@ -111,9 +111,8 @@ Support pluggable acquisition from multiple authorized sources.
 
 ### Scope
 
-- [ ] Provider interface: discover/metadata/download methods.
 - [x] Provider interface: discover/metadata/download methods.
-- [ ] Built-in providers: YouTube, RSS/video feeds, local watch folders.
+- [x] Built-in providers: YouTube, RSS/video feeds, local watch folders.
 - [ ] Optional community provider adapters via plugin registry.
 - [ ] Unified source priority and dedupe strategy.
 
@@ -152,8 +151,9 @@ Production-grade open-source release for broad self-hosting.
 - [x] Migration system and compatibility guarantees.
 - [x] Backups, restore verification, and disaster recovery guide.
 - [x] Docker Compose and systemd deployment profiles.
-- [ ] Security hardening and release checklist.
-- [ ] Maintainer workflow and release cadence.
+- [x] Security hardening checklist.
+- [x] Release workflow automation (tag-based build and GitHub release).
+- [ ] Maintainer release cadence policy.
 
 ### Exit Criteria
 
@@ -163,7 +163,7 @@ Production-grade open-source release for broad self-hosting.
 
 ## Next 4-Week Execution Plan
 
-1. Add metrics endpoint + structured logs.
-2. Build network/offline state manager and sync windows.
-3. Implement storage/offline planner with configurable target hours.
-4. Create first Bunku Mode UI skeleton (home rails, playback, queue panel).
+1. Build storage/offline planner with configurable target horizon and storage budget.
+2. Expand Bunku Mode controls (filters, explicit "why this", queue management actions).
+3. Add optional authentication layer for non-LAN exposure.
+4. Add community provider adapter registry and validation policy.

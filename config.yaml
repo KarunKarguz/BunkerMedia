@@ -14,6 +14,8 @@ update_intervals:
   intelligence_refresh_seconds: 1200
 channel_feeds: []
 playlist_feeds: []
+rss_feeds: []
+local_watch_folders: []
 prefer_low_power_mode: true
 embedding_dim: 128
 intelligence_batch_size: 40
