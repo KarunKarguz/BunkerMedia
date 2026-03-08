@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from pathlib import Path
 
+from bunkermedia.config import AppConfig
+from bunkermedia.maintenance import backup_state, restore_state
 from bunkermedia.service import BunkerService
 
 
@@ -36,6 +39,16 @@ def _build_parser() -> argparse.ArgumentParser:
     retry_dead_cmd = sub.add_parser("retry-dead", help="Retry one or all dead-letter jobs")
     retry_dead_cmd.add_argument("--id", type=int, default=None, help="Dead-letter id to retry")
     retry_dead_cmd.add_argument("--all", action="store_true", help="Retry all non-retried dead-letter jobs")
+
+    backup_cmd = sub.add_parser("backup", help="Create state backup archive")
+    backup_cmd.add_argument("--output-dir", default=None, help="Output directory for backup archive")
+
+    restore_cmd = sub.add_parser("restore", help="Restore state backup archive")
+    restore_cmd.add_argument("archive", help="Path to backup archive (.tar.gz)")
+    restore_cmd.add_argument("--force", action="store_true", help="Overwrite existing database state")
+
+    status_cmd = sub.add_parser("status", help="Show runtime status")
+    status_cmd.add_argument("--json", action="store_true", help="Output JSON")
 
     serve_cmd = sub.add_parser("serve", help="Run FastAPI server")
     serve_cmd.add_argument("--host", default=None)
@@ -132,6 +145,37 @@ async def _cmd_retry_dead(args: argparse.Namespace) -> None:
     await service.shutdown()
 
 
+async def _cmd_backup(args: argparse.Namespace) -> None:
+    config = AppConfig.from_yaml(args.config)
+    output_dir = Path(args.output_dir).expanduser() if args.output_dir else None
+    backup_file = backup_state(config, output_dir=output_dir)
+    print(f"Backup created: {backup_file}")
+
+
+async def _cmd_restore(args: argparse.Namespace) -> None:
+    config = AppConfig.from_yaml(args.config)
+    archive = Path(args.archive).expanduser()
+    restore_state(config, archive_path=archive, force=bool(args.force))
+    print(f"Restore completed from: {archive}")
+
+
+async def _cmd_status(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    await service.refresh_network_state()
+    status = service.get_health_state()
+    status["jobs_pending"] = len(service.list_download_jobs(status="pending", limit=5000))
+    status["jobs_processing"] = len(service.list_download_jobs(status="processing", limit=5000))
+    status["jobs_dead"] = len(service.list_download_jobs(status="dead", limit=5000))
+    status["deadletters"] = len(service.list_dead_letter_jobs(limit=5000))
+    if args.json:
+        print(json.dumps(status, separators=(",", ":"), ensure_ascii=True))
+    else:
+        for key in ["status", "online", "in_sync_window", "jobs_pending", "jobs_processing", "jobs_dead", "deadletters"]:
+            print(f"{key}: {status[key]}")
+    await service.shutdown()
+
+
 def _cmd_serve(args: argparse.Namespace) -> None:
     import uvicorn
 
@@ -170,6 +214,15 @@ def main() -> None:
         return
     if args.command == "retry-dead":
         asyncio.run(_cmd_retry_dead(args))
+        return
+    if args.command == "backup":
+        asyncio.run(_cmd_backup(args))
+        return
+    if args.command == "restore":
+        asyncio.run(_cmd_restore(args))
+        return
+    if args.command == "status":
+        asyncio.run(_cmd_status(args))
         return
     if args.command == "serve":
         _cmd_serve(args)

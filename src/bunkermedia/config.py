@@ -20,6 +20,7 @@ class UpdateIntervals:
 class ServerConfig:
     host: str = "0.0.0.0"
     port: int = 8080
+    enable_metrics: bool = True
 
 
 @dataclass(slots=True)
@@ -42,6 +43,13 @@ class AppConfig:
     retry_base_seconds: int = 30
     retry_max_seconds: int = 1800
     retry_jitter: float = 0.15
+    log_format: str = "text"
+    force_offline_mode: bool = False
+    connectivity_check_host: str = "1.1.1.1"
+    connectivity_check_port: int = 53
+    connectivity_check_timeout_seconds: float = 2.0
+    sync_windows: list[str] = field(default_factory=list)
+    backup_path: Path | None = None
 
     @property
     def logs_dir(self) -> Path:
@@ -75,6 +83,17 @@ class AppConfig:
             retry_base_seconds=int(raw.get("retry_base_seconds", 30)),
             retry_max_seconds=int(raw.get("retry_max_seconds", 1800)),
             retry_jitter=float(raw.get("retry_jitter", 0.15)),
+            log_format=str(raw.get("log_format", "text")).lower(),
+            force_offline_mode=bool(raw.get("force_offline_mode", False)),
+            connectivity_check_host=str(raw.get("connectivity_check_host", "1.1.1.1")),
+            connectivity_check_port=int(raw.get("connectivity_check_port", 53)),
+            connectivity_check_timeout_seconds=float(raw.get("connectivity_check_timeout_seconds", 2.0)),
+            sync_windows=list(raw.get("sync_windows", [])),
+            backup_path=(
+                cls._resolve_path(base_dir, raw.get("backup_path"))
+                if raw.get("backup_path")
+                else cls._resolve_path(base_dir, "./backups")
+            ),
         )
 
     @staticmethod

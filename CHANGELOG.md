@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.2] - 2026-03-08
+
+### Added
+
+- Prometheus-style metrics registry and `/metrics` endpoint.
+- Structured logging mode (`log_format: json`).
+- Network-aware offline detection and sync-window gating.
+- Backup and restore tooling (CLI and API).
+- Deployment artifacts (`Dockerfile`, `docker-compose.yml`, `systemd` template).
+
 ## [0.1.1] - 2026-03-08
 
 ### Added

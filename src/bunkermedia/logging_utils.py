@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+import json
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 
-def setup_logging(logs_dir: Path) -> logging.Logger:
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": self.formatTime(record, self.datefmt or "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "name": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+
+def setup_logging(logs_dir: Path, mode: str = "text") -> logging.Logger:
     logs_dir.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger("bunkermedia")
     if logger.handlers:
@@ -13,10 +27,14 @@ def setup_logging(logs_dir: Path) -> logging.Logger:
 
     logger.setLevel(logging.INFO)
 
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    mode = mode.strip().lower()
+    if mode == "json":
+        formatter = JsonFormatter(datefmt="%Y-%m-%dT%H:%M:%S")
+    else:
+        formatter = logging.Formatter(
+            "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
     console = logging.StreamHandler()
     console.setFormatter(formatter)

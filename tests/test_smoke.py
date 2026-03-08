@@ -3,6 +3,8 @@ from pathlib import Path
 from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
 from bunkermedia.intelligence import build_hash_embedding, cosine_similarity
+from bunkermedia.maintenance import backup_state, restore_state
+from bunkermedia.network import NetworkStateManager
 
 
 def test_config_defaults(tmp_path: Path) -> None:
@@ -56,3 +58,58 @@ def test_download_retry_and_dead_letter_flow(tmp_path: Path) -> None:
     assert retried_job_id != job_id
 
     db.close()
+
+
+def test_backup_restore_roundtrip(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "download_path: ./media",
+                "database_path: ./bunkermedia.db",
+                "download_archive: ./archive.txt",
+                "backup_path: ./backups",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    cfg = AppConfig.from_yaml(cfg_path)
+
+    db = Database(cfg.database_path)
+    db.initialize()
+    db.queue_download("https://www.youtube.com/watch?v=seed", target_type="single")
+    db.close()
+    cfg.download_archive.write_text("seed\n", encoding="utf-8")
+
+    backup_file = backup_state(cfg, output_dir=cfg.backup_path)
+    assert backup_file.exists()
+
+    cfg.database_path.unlink(missing_ok=True)
+    restore_state(cfg, archive_path=backup_file, force=False)
+    assert cfg.database_path.exists()
+
+
+def test_sync_window_logic(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "download_path: ./media",
+                "database_path: ./bunkermedia.db",
+                "download_archive: ./archive.txt",
+                "sync_windows:",
+                "  - \"09:00-11:00\"",
+                "  - \"22:00-02:00\"",
+                "force_offline_mode: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    cfg = AppConfig.from_yaml(cfg_path)
+    manager = NetworkStateManager(cfg, logger=type("L", (), {"info": lambda *a, **k: None})())
+
+    from datetime import datetime
+
+    assert manager.in_sync_window(datetime(2026, 3, 8, 9, 30).astimezone())
+    assert not manager.in_sync_window(datetime(2026, 3, 8, 14, 30).astimezone())
+    assert manager.in_sync_window(datetime(2026, 3, 8, 23, 30).astimezone())

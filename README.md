@@ -9,6 +9,7 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Security policy: `SECURITY.md`
 - Architecture notes: `docs/ARCHITECTURE.md`
 - Bunku Mode UI spec: `docs/BUNKU_MODE_UI.md`
+- Operations guide: `docs/OPERATIONS.md`
 
 ## Features
 
@@ -20,7 +21,8 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Bunku Mode local-first web UI (`/bunku`) with rails, queue panel, and feedback controls
 - FastAPI media server
 - Async background workers for sync and queued downloads
-- CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker serve`
+- Prometheus-style metrics endpoint (`/metrics`) and queue/dead-letter observability
+- CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker serve`, `bunker status`, `bunker backup`, `bunker restore`
 
 ## Install
 
@@ -51,6 +53,11 @@ Edit `config.yaml`:
 - `retry_base_seconds`
 - `retry_max_seconds`
 - `retry_jitter`
+- `log_format` (`text` or `json`)
+- `force_offline_mode`
+- `connectivity_check_host` / `connectivity_check_port`
+- `sync_windows` (e.g. `["00:00-06:00","21:00-23:59"]`)
+- `backup_path`
 
 Optional feed seeds:
 
@@ -67,6 +74,9 @@ bunker recommend --limit 10 --explain
 bunker jobs --status pending --limit 50
 bunker deadletters --limit 50
 bunker retry-dead --all
+bunker status --json
+bunker backup --output-dir ./backups
+bunker restore ./backups/bunkermedia-backup-YYYYMMDDTHHMMSSZ.tar.gz --force
 bunker serve --host 0.0.0.0 --port 8080
 # open http://localhost:8080/bunku
 ```
@@ -74,9 +84,12 @@ bunker serve --host 0.0.0.0 --port 8080
 ## API Endpoints
 
 - `GET /health`
+- `GET /metrics`
 - `GET /bunku`
 - `GET /bunku/data/home`
 - `POST /bunku/data/sync`
+- `POST /backup`
+- `POST /restore`
 - `GET /videos?limit=100&search=keyword`
 - `GET /videos/{video_id}`
 - `GET /jobs?status=pending&limit=100`
@@ -92,3 +105,8 @@ bunker serve --host 0.0.0.0 --port 8080
 - Use conservative update intervals to reduce CPU/network churn.
 - Use the default low-power downloader format selection.
 - Keep `embedding_dim` between `64` and `128` for low-power devices.
+
+## Deployment
+
+- Docker: `docker compose up --build`
+- systemd unit template: `deploy/systemd/bunkermedia.service`

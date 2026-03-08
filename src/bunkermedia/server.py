@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from bunkermedia.service import BunkerService
@@ -26,6 +27,15 @@ class QueuePayload(BaseModel):
     priority: int = 0
 
 
+class BackupPayload(BaseModel):
+    output_dir: str | None = None
+
+
+class RestorePayload(BaseModel):
+    archive_path: str
+    force: bool = False
+
+
 def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     service = BunkerService(config_path=config_path)
     app = FastAPI(title="BunkerMedia", version="0.1.0")
@@ -41,6 +51,15 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     @app.on_event("shutdown")
     async def on_shutdown() -> None:
         await service.shutdown()
+
+    @app.middleware("http")
+    async def metrics_middleware(request, call_next):
+        start = time.perf_counter()
+        response = await call_next(request)
+        elapsed = time.perf_counter() - start
+        service.metrics.inc("http_requests_total")
+        service.metrics.observe("http_request_duration_seconds", elapsed)
+        return response
 
     @app.get("/", include_in_schema=False)
     async def root_redirect():
@@ -69,6 +88,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
 
     @app.get("/bunku/data/home")
     async def bunku_home(limit: int = Query(16, ge=4, le=60)):
+        await service.refresh_network_state()
         videos = service.list_videos(limit=max(200, limit * 8), search=None)
         video_by_id = {str(item["video_id"]): item for item in videos if item.get("video_id")}
 
@@ -108,7 +128,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             "fresh": fresh,
             "queue": queue,
             "deadletters": deadletters,
-            "offline_mode": False,
+            "offline_mode": not service.network.is_online,
         }
 
     @app.post("/bunku/data/sync")
@@ -117,11 +137,19 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             return {"status": "busy"}
         async with sync_lock:
             await service.sync_once()
-        return {"status": "ok"}
+        return {"status": "ok", "online": str(service.network.is_online).lower()}
 
     @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    async def health() -> dict[str, object]:
+        await service.refresh_network_state()
+        return service.get_health_state()
+
+    @app.get("/metrics")
+    async def metrics():
+        if not service.config.server.enable_metrics:
+            raise HTTPException(status_code=404, detail="Metrics disabled")
+        payload = service.render_metrics()
+        return PlainTextResponse(payload, media_type="text/plain")
 
     @app.get("/videos")
     async def list_videos(limit: int = Query(100, ge=1, le=1000), search: str | None = None):
@@ -145,6 +173,23 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             raise HTTPException(status_code=400, detail="URL is required")
         job_id = await service.add_url(url, target_type=payload.target_type, priority=payload.priority)
         return {"status": "queued", "job_id": job_id}
+
+    @app.post("/backup")
+    async def create_backup(payload: BackupPayload):
+        target = Path(payload.output_dir).expanduser() if payload.output_dir else None
+        backup_path = await asyncio.to_thread(service.backup, target)
+        return {"status": "ok", "backup_path": str(backup_path)}
+
+    @app.post("/restore")
+    async def restore_backup(payload: RestorePayload):
+        archive = Path(payload.archive_path).expanduser()
+        try:
+            await asyncio.to_thread(service.restore, archive, payload.force)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"status": "ok"}
 
     @app.get("/jobs")
     async def list_jobs(

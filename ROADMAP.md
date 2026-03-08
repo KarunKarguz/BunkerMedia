@@ -51,9 +51,9 @@ Solid single-user CLI/API with stable acquisition and ranking.
 
 - [x] Download queue + retry/dead-letter.
 - [x] Recommendation explainability.
-- [ ] Metrics endpoint (queue depth, retries, dead-letter, recommendation latency).
-- [ ] Structured log mode (JSON).
-- [ ] Export/import for DB and preferences.
+- [x] Metrics endpoint (queue depth, retries, dead-letter, recommendation latency).
+- [x] Structured log mode (JSON).
+- [x] Backup/restore for DB/archive state.
 - [ ] Integration tests for queue/reco/api flow.
 
 ### Exit Criteria
@@ -149,8 +149,8 @@ Production-grade open-source release for broad self-hosting.
 ### Scope
 
 - [ ] Migration system and compatibility guarantees.
-- [ ] Backups, restore verification, and disaster recovery guide.
-- [ ] Docker Compose and systemd deployment profiles.
+- [x] Backups, restore verification, and disaster recovery guide.
+- [x] Docker Compose and systemd deployment profiles.
 - [ ] Security hardening and release checklist.
 - [ ] Maintainer workflow and release cadence.
 

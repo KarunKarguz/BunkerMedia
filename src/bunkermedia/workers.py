@@ -8,6 +8,8 @@ from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
 from bunkermedia.downloader import Downloader
 from bunkermedia.intelligence import IntelligenceEngine
+from bunkermedia.metrics import MetricsRegistry
+from bunkermedia.network import NetworkStateManager
 from bunkermedia.recommender import RecommendationEngine
 from bunkermedia.scraper import Scraper
 
@@ -22,6 +24,8 @@ class WorkerManager:
         intelligence: IntelligenceEngine,
         recommender: RecommendationEngine,
         logger: Any,
+        network: NetworkStateManager,
+        metrics: MetricsRegistry,
     ) -> None:
         self.config = config
         self.db = db
@@ -30,6 +34,8 @@ class WorkerManager:
         self.intelligence = intelligence
         self.recommender = recommender
         self.logger = logger
+        self.network = network
+        self.metrics = metrics
         self._stop_event = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
 
@@ -80,6 +86,7 @@ class WorkerManager:
             try:
                 await fn()
             except Exception:
+                self.metrics.inc(f"worker_failures_{name}_total")
                 self.logger.exception("Worker failed name=%s", name)
 
             try:
@@ -88,9 +95,16 @@ class WorkerManager:
                 continue
 
     async def _run_trending_fetch(self) -> None:
+        if not await self._allow_online_sync():
+            self.metrics.inc("worker_trending_skipped_total")
+            return
         await self.scraper.fetch_trending(limit=50)
+        self.metrics.inc("worker_trending_success_total")
 
     async def _run_playlist_sync(self) -> None:
+        if not await self._allow_online_sync():
+            self.metrics.inc("worker_playlist_skipped_total")
+            return
         for playlist_url in self.config.playlist_feeds:
             videos = await self.scraper.fetch_playlist_metadata(playlist_url, limit=100)
             for video in videos:
@@ -98,6 +112,7 @@ class WorkerManager:
                 if existing and not int(existing.get("downloaded") or 0):
                     source = video.source_url or f"https://www.youtube.com/watch?v={video.video_id}"
                     self.db.queue_download(source, target_type="single", priority=1)
+        self.metrics.inc("worker_playlist_success_total")
 
         for channel_url in self.config.channel_feeds:
             videos = await self.scraper.fetch_channel_feed(channel_url, limit=50)
@@ -109,11 +124,16 @@ class WorkerManager:
 
     async def _run_intelligence_refresh(self) -> None:
         await self.intelligence.refresh_embeddings(limit=self.config.intelligence_batch_size)
+        self.metrics.inc("worker_intelligence_success_total")
 
     async def _run_recommendation_refresh(self) -> None:
         await self.recommender.refresh_scores()
+        self.metrics.inc("worker_recommendation_success_total")
 
     async def process_download_queue_once(self) -> None:
+        if not await self._allow_online_sync():
+            self.metrics.inc("worker_queue_skipped_total")
+            return
         jobs = self.db.claim_pending_jobs(limit=max(self.config.max_parallel_downloads, 1))
         if not jobs:
             return
@@ -132,10 +152,12 @@ class WorkerManager:
             try:
                 await self.downloader.download_url(url, target_type=target_type)
                 self.db.update_job_status(job_id, "done")
+                self.metrics.inc("download_jobs_done_total")
             except Exception as exc:
                 error = str(exc)
                 if attempts >= self.config.max_download_attempts:
                     self.db.dead_letter_job(job_id, error=error)
+                    self.metrics.inc("download_jobs_deadletter_total")
                     self.logger.exception(
                         "Download job moved to dead-letter id=%s attempts=%s url=%s",
                         job_id,
@@ -146,6 +168,7 @@ class WorkerManager:
 
                 delay_seconds = self._compute_retry_delay_seconds(attempts)
                 self.db.requeue_job_with_backoff(job_id, error=error, delay_seconds=delay_seconds)
+                self.metrics.inc("download_jobs_requeued_total")
                 self.logger.warning(
                     "Download job requeued id=%s attempts=%s next_retry_in=%ss url=%s error=%s",
                     job_id,
@@ -163,3 +186,10 @@ class WorkerManager:
         delay = min(maximum, base * (2 ** max(0, attempts - 1)))
         jitter_multiplier = 1.0 + random.uniform(-jitter_ratio, jitter_ratio)
         return max(1, int(delay * jitter_multiplier))
+
+    async def _allow_online_sync(self) -> bool:
+        online = await self.network.refresh()
+        self.metrics.set_gauge("network_online", 1.0 if online else 0.0)
+        if not online:
+            return False
+        return self.network.in_sync_window()

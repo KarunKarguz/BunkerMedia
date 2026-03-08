@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  bunkermedia:
+    build: .
+    container_name: bunkermedia
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./media:/app/media
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+      - ./bunkermedia.db:/app/bunkermedia.db
+      - ./archive.txt:/app/archive.txt
+    restart: unless-stopped
+    command: ["bunker", "--config", "/app/config.yaml", "serve", "--host", "0.0.0.0", "--port", "8080"]

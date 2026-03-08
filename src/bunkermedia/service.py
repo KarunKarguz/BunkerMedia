@@ -8,6 +8,9 @@ from bunkermedia.downloader import Downloader
 from bunkermedia.intelligence import IntelligenceEngine
 from bunkermedia.library import MediaLibrary
 from bunkermedia.logging_utils import setup_logging
+from bunkermedia.maintenance import backup_state, restore_state
+from bunkermedia.metrics import MetricsRegistry
+from bunkermedia.network import NetworkStateManager
 from bunkermedia.recommender import RecommendationEngine
 from bunkermedia.scraper import Scraper
 from bunkermedia.workers import WorkerManager
@@ -16,9 +19,11 @@ from bunkermedia.workers import WorkerManager
 class BunkerService:
     def __init__(self, config_path: str | Path = "config.yaml") -> None:
         self.config = AppConfig.from_yaml(config_path)
-        self.logger = setup_logging(self.config.logs_dir)
+        self.logger = setup_logging(self.config.logs_dir, mode=self.config.log_format)
+        self.metrics = MetricsRegistry()
         self.db = Database(self.config.database_path)
         self.library = MediaLibrary(self.config.download_path)
+        self.network = NetworkStateManager(self.config, self.logger)
         self.downloader = Downloader(self.config, self.db, self.library, self.logger)
         self.scraper = Scraper(self.db, self.logger)
         self.intelligence = IntelligenceEngine(
@@ -36,6 +41,8 @@ class BunkerService:
             self.intelligence,
             self.recommender,
             self.logger,
+            self.network,
+            self.metrics,
         )
         self._initialized = False
 
@@ -46,7 +53,10 @@ class BunkerService:
         self.db.initialize()
         self.config.download_archive.parent.mkdir(parents=True, exist_ok=True)
         self.config.download_archive.touch(exist_ok=True)
+        await self.network.refresh()
+        self.metrics.set_gauge("network_online", 1.0 if self.network.is_online else 0.0)
         self._initialized = True
+        self.metrics.inc("service_init_total")
         self.logger.info("Service initialized")
 
     async def shutdown(self) -> None:
@@ -55,9 +65,23 @@ class BunkerService:
         self._initialized = False
 
     async def add_url(self, url: str, target_type: str = "auto", priority: int = 0) -> int:
-        return self.db.queue_download(url, target_type=target_type, priority=priority)
+        job_id = self.db.queue_download(url, target_type=target_type, priority=priority)
+        self.metrics.inc("download_jobs_queued_total")
+        return job_id
 
     async def sync_once(self) -> None:
+        await self.network.refresh()
+        self.metrics.set_gauge("network_online", 1.0 if self.network.is_online else 0.0)
+        if not self.network.is_online:
+            self.logger.warning("Sync skipped: offline mode")
+            self.metrics.inc("sync_skipped_offline_total")
+            return
+        if not self.network.in_sync_window():
+            self.logger.info("Sync skipped: outside sync window")
+            self.metrics.inc("sync_skipped_window_total")
+            return
+
+        self.metrics.inc("sync_started_total")
         await self.scraper.fetch_trending(limit=50)
 
         for channel in self.config.channel_feeds:
@@ -69,6 +93,7 @@ class BunkerService:
         await self.workers.process_download_queue_once()
         await self.intelligence.refresh_embeddings(limit=self.config.intelligence_batch_size)
         await self.recommender.refresh_scores()
+        self.metrics.inc("sync_completed_total")
 
     async def recommend(self, limit: int = 20, explain: bool = False):
         return await self.recommender.recommend(limit=limit, explain=explain)
@@ -119,3 +144,28 @@ class BunkerService:
         if not path.exists():
             return None
         return path
+
+    async def refresh_network_state(self) -> bool:
+        online = await self.network.refresh()
+        self.metrics.set_gauge("network_online", 1.0 if online else 0.0)
+        return online
+
+    def get_health_state(self) -> dict[str, object]:
+        return {
+            "status": "ok",
+            "online": self.network.is_online,
+            "in_sync_window": self.network.in_sync_window(),
+        }
+
+    def render_metrics(self) -> str:
+        self.metrics.set_gauge("queue_pending", float(len(self.db.list_download_jobs(status="pending", limit=5000))))
+        self.metrics.set_gauge("queue_processing", float(len(self.db.list_download_jobs(status="processing", limit=5000))))
+        self.metrics.set_gauge("queue_dead", float(len(self.db.list_download_jobs(status="dead", limit=5000))))
+        self.metrics.set_gauge("deadletter_items", float(len(self.db.list_dead_letter_jobs(limit=5000))))
+        return self.metrics.render_prometheus()
+
+    def backup(self, output_dir: Path | None = None) -> Path:
+        return backup_state(self.config, output_dir=output_dir)
+
+    def restore(self, archive_path: Path, force: bool = False) -> None:
+        restore_state(self.config, archive_path=archive_path, force=force)

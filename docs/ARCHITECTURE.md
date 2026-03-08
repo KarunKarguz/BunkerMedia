@@ -16,6 +16,9 @@ BunkerMedia is organized into these runtime layers:
 4. Runtime:
 - `workers.py`: background loops for sync, intelligence, recommendations, queue
 - `service.py`: orchestration and lifecycle
+- `network.py`: online/offline detection and sync-window checks
+- `metrics.py`: in-process counters/gauges/timers for observability
+- `maintenance.py`: backup and restore operations
 
 5. Interfaces:
 - `cli.py`: command line workflow

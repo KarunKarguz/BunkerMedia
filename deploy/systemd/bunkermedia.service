@@ -1,0 +1,15 @@
+[Unit]
+Description=BunkerMedia Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/BunkerMedia
+ExecStart=/opt/BunkerMedia/.venv/bin/bunker --config /opt/BunkerMedia/config.yaml serve --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=5
+User=bunker
+Group=bunker
+
+[Install]
+WantedBy=multi-user.target
