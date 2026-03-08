@@ -19,6 +19,7 @@ setup(
         "yt-dlp>=2025.1.1",
         "PyYAML>=6.0.2",
         "pydantic>=2.8.0",
+        "httpx>=0.27.0",
     ],
     entry_points={
         "console_scripts": [
