@@ -1,0 +1,19 @@
+download_path: ./media
+database_path: ./bunkermedia.db
+download_archive: ./archive.txt
+max_parallel_downloads: 2
+server:
+  host: 0.0.0.0
+  port: 8080
+update_intervals:
+  trending_fetch_seconds: 3600
+  playlist_sync_seconds: 1800
+  recommendation_update_seconds: 900
+  download_queue_seconds: 20
+  intelligence_refresh_seconds: 1200
+channel_feeds: []
+playlist_feeds: []
+prefer_low_power_mode: true
+embedding_dim: 128
+intelligence_batch_size: 40
+transcript_max_chars: 12000

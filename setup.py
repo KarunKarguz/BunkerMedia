@@ -1,0 +1,28 @@
+from setuptools import find_packages, setup
+
+
+setup(
+    name="bunkermedia",
+    version="0.1.0",
+    description="Self-hosted intelligent media acquisition and streaming system",
+    long_description=open("README.md", "r", encoding="utf-8").read(),
+    long_description_content_type="text/markdown",
+    author="BunkerMedia",
+    python_requires=">=3.10",
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
+    include_package_data=True,
+    install_requires=[
+        "fastapi>=0.115.0",
+        "uvicorn>=0.30.0",
+        "yt-dlp>=2025.1.1",
+        "PyYAML>=6.0.2",
+        "pydantic>=2.8.0",
+    ],
+    entry_points={
+        "console_scripts": [
+            "bunker=bunkermedia.cli:main",
+        ]
+    },
+    license="MIT",
+)
