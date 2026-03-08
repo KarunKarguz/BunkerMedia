@@ -8,8 +8,10 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Contributing guide: `CONTRIBUTING.md`
 - Security policy: `SECURITY.md`
 - Architecture notes: `docs/ARCHITECTURE.md`
+- Governance and support policy: `docs/GOVERNANCE.md`
 - Bunku Mode UI spec: `docs/BUNKU_MODE_UI.md`
 - Operations guide: `docs/OPERATIONS.md`
+- Release cadence policy: `docs/RELEASE_POLICY.md`
 - Security hardening checklist: `docs/SECURITY_HARDENING_CHECKLIST.md`
 - Security CI workflow: `.github/workflows/security.yml`
 - Release security artifacts: SBOM + checksums in tagged releases

@@ -153,13 +153,17 @@ Production-grade open-source release for broad self-hosting.
 - [x] Docker Compose and systemd deployment profiles.
 - [x] Security hardening checklist.
 - [x] Release workflow automation (tag-based build and GitHub release).
-- [ ] Maintainer release cadence policy.
+- [x] Maintainer release cadence policy.
 
 ### Exit Criteria
 
 - Versioned upgrade path across minor releases.
 - One-command deploy for Linux and Raspberry Pi profiles.
 - Published governance and support expectations.
+
+### Status
+
+- v1.0 core platform baseline complete.
 
 ## Next 4-Week Execution Plan
 

@@ -85,6 +85,7 @@ sudo systemctl start bunkermedia
 ## Release Automation
 
 - GitHub workflow: `.github/workflows/release.yml`
+- Policy reference: `docs/RELEASE_POLICY.md`
 - Trigger: push tag matching `v*` (for example `v0.1.4`).
 - Actions:
   - compile and run test suite gate,

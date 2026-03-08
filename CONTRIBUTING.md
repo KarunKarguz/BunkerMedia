@@ -39,3 +39,9 @@ python3 -m bunkermedia --help
 - [ ] New behavior has tests.
 - [ ] No secrets or local artifacts committed.
 - [ ] Docs updated where relevant.
+
+## Project Policies
+
+- Governance and support: `docs/GOVERNANCE.md`
+- Release cadence and version policy: `docs/RELEASE_POLICY.md`
+- Security reporting: `SECURITY.md`

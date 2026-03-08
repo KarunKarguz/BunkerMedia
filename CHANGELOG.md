@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.7] - 2026-03-08
+
+### Added
+
+- Maintainer release cadence and semantic versioning policy (`docs/RELEASE_POLICY.md`).
+- Governance and support expectations document (`docs/GOVERNANCE.md`).
+
+### Changed
+
+- Marked Phase F roadmap release policy scope complete and declared v1 core baseline complete.
+- Updated contributing and PR template to require policy/doc updates when release/support model changes.
+
 ## [0.1.5] - 2026-03-08
 
 ### Changed
