@@ -1,49 +1,51 @@
 download_path: ./media
 database_path: ./bunkermedia.db
 download_archive: ./archive.txt
-max_parallel_downloads: 2
+max_parallel_downloads: 1
 server:
   host: 0.0.0.0
   port: 8080
   enable_metrics: true
 update_intervals:
-  trending_fetch_seconds: 3600
-  playlist_sync_seconds: 1800
-  recommendation_update_seconds: 900
-  download_queue_seconds: 20
-  intelligence_refresh_seconds: 1200
+  trending_fetch_seconds: 7200
+  playlist_sync_seconds: 3600
+  recommendation_update_seconds: 1800
+  download_queue_seconds: 30
+  intelligence_refresh_seconds: 2400
 channel_feeds: []
 playlist_feeds: []
 rss_feeds: []
 local_watch_folders: []
 import_watch_folders:
-  - ./media/imports
+  - ./media/nas-import
 auto_organize_imports: true
 import_move_mode: move
-import_scan_limit: 500
+import_scan_limit: 300
 prefer_low_power_mode: true
-embedding_dim: 128
-intelligence_batch_size: 40
-transcript_max_chars: 12000
+auto_start_workers: true
+embedding_dim: 64
+intelligence_batch_size: 20
+transcript_max_chars: 8000
 max_download_attempts: 4
-retry_base_seconds: 30
-retry_max_seconds: 1800
+retry_base_seconds: 60
+retry_max_seconds: 3600
 retry_jitter: 0.15
 log_format: text
 force_offline_mode: false
 connectivity_check_host: 1.1.1.1
 connectivity_check_port: 53
 connectivity_check_timeout_seconds: 2.0
-sync_windows: []
+sync_windows:
+  - "00:00-06:00"
 backup_path: ./backups
-offline_target_hours: 8
-offline_planner_max_candidates: 200
-offline_planner_batch_size: 20
-offline_default_video_minutes: 20
-offline_estimated_mbps: 1.2
+offline_target_hours: 12
+offline_planner_max_candidates: 120
+offline_planner_batch_size: 10
+offline_default_video_minutes: 25
+offline_estimated_mbps: 1.0
 offline_queue_priority: 2
 storage_max_gb: 0
-storage_reserve_gb: 1
+storage_reserve_gb: 3
 storage_eviction_policy: watched_oldest
 storage_protect_liked: true
-storage_eviction_batch_size: 25
+storage_eviction_batch_size: 10

@@ -28,11 +28,14 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Async background workers for sync and queued downloads
 - Offline horizon planner for auto-queuing watch-ready content
 - Storage budget policy with automated eviction
+- Appliance telemetry for disk, memory, load, and Pi temperature
+- NAS/local import organizer for auto-sorting dropped media files
 - Prometheus-style metrics endpoint (`/metrics`) and queue/dead-letter observability
 - Schema migration/version tracking (`schema_migrations`)
 - Provider plugin framework with built-in `youtube` provider
 - Additional built-in providers: `rss` and `local`
 - CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker serve`, `bunker status`, `bunker backup`, `bunker restore`, `bunker providers`, `bunker discover`, `bunker schema`
+- CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker serve`, `bunker status`, `bunker imports-organize`, `bunker backup`, `bunker restore`, `bunker providers`, `bunker discover`, `bunker schema`
 
 ## Install
 
@@ -68,6 +71,10 @@ Edit `config.yaml`:
 - `connectivity_check_host` / `connectivity_check_port`
 - `sync_windows` (e.g. `["00:00-06:00","21:00-23:59"]`)
 - `backup_path`
+- `import_watch_folders`
+- `auto_organize_imports`
+- `import_move_mode` (`move` or `copy`)
+- `import_scan_limit`
 - `offline_target_hours`
 - `offline_planner_max_candidates`
 - `offline_planner_batch_size`
@@ -98,12 +105,13 @@ bunker jobs --status pending --limit 50
 bunker deadletters --limit 50
 bunker retry-dead --all
 bunker status --json
+bunker imports-organize --json
+bunker discover --provider local --source default --limit 20
 bunker plan-offline --json
 bunker storage-enforce --json
 bunker providers
 bunker discover --provider youtube --source trending --limit 20
 bunker discover --provider rss --source https://example.com/feed.xml --limit 20
-bunker discover --provider local --source default --limit 20
 bunker backup --output-dir ./backups
 bunker restore ./backups/bunkermedia-backup-YYYYMMDDTHHMMSSZ.tar.gz --force
 bunker schema --json
@@ -116,7 +124,9 @@ bunker serve --host 0.0.0.0 --port 8080
 - `GET /health`
 - `GET /metrics`
 - `GET /schema`
+- `GET /system`
 - `GET /providers`
+- `POST /imports/organize`
 - `GET /offline/inventory`
 - `POST /offline/plan`
 - `POST /storage/enforce`
@@ -142,6 +152,10 @@ bunker serve --host 0.0.0.0 --port 8080
 - Use conservative update intervals to reduce CPU/network churn.
 - Use the default low-power downloader format selection.
 - Keep `embedding_dim` between `64` and `128` for low-power devices.
+- Use the tuned preset: `deploy/raspberrypi/config.pi.yaml`
+- Quick bootstrap: `deploy/raspberrypi/setup_pi.sh`
+- Pi Docker profile: `deploy/raspberrypi/docker-compose.pi.yml`
+- Use `media/nas-import` or `media/imports` as the drop folder for local/NAS ingest
 
 ## Deployment
 

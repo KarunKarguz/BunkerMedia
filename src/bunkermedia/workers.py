@@ -28,6 +28,7 @@ class WorkerManager:
         metrics: MetricsRegistry,
         offline_planner: Any | None = None,
         storage_policy: Any | None = None,
+        import_organizer: Any | None = None,
     ) -> None:
         self.config = config
         self.db = db
@@ -40,6 +41,7 @@ class WorkerManager:
         self.metrics = metrics
         self.offline_planner = offline_planner
         self.storage_policy = storage_policy
+        self.import_organizer = import_organizer
         self._stop_event = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
 
@@ -131,6 +133,10 @@ class WorkerManager:
         self.metrics.inc("worker_intelligence_success_total")
 
     async def _run_recommendation_refresh(self) -> None:
+        if self.import_organizer is not None:
+            result = self.import_organizer.organize_once()
+            self.metrics.inc("worker_import_organizer_runs_total")
+            self.metrics.inc("worker_imports_organized_total", float(int(result.get("organized") or 0)))
         await self.recommender.refresh_scores()
         if self.offline_planner is not None:
             result = await self.offline_planner.plan_once()

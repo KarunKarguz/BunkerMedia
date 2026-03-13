@@ -12,6 +12,7 @@ Example:
 curl -s http://localhost:8080/health
 curl -s http://localhost:8080/metrics | head
 curl -s http://localhost:8080/schema
+curl -s http://localhost:8080/system
 ```
 
 ## Logging
@@ -57,6 +58,9 @@ Use these config keys:
 - `offline_planner_batch_size`
 - `storage_max_gb`
 - `storage_eviction_policy`
+- `import_watch_folders`
+- `auto_organize_imports`
+- `import_move_mode`
 
 `sync_windows` format examples:
 
@@ -83,6 +87,27 @@ curl -s -X POST http://localhost:8080/storage/enforce
 
 These operations are also run in background worker recommendation cycles.
 
+## NAS Import Organization
+
+Drop media files into configured import folders such as:
+
+- `media/imports`
+- `media/nas-import`
+
+Then trigger ingest:
+
+```bash
+bunker imports-organize --json
+curl -s -X POST http://localhost:8080/imports/organize
+```
+
+Files are auto-classified into:
+
+- `media/library/video/<collection>/`
+- `media/library/audio/<collection>/`
+
+Organized folders are included in local discovery, so imported files appear in Bunku after refresh/sync.
+
 ## Deployment
 
 ### Docker Compose
@@ -90,6 +115,29 @@ These operations are also run in background worker recommendation cycles.
 ```bash
 docker compose up --build -d
 ```
+
+### Raspberry Pi Appliance Profile
+
+Bootstrap:
+
+```bash
+./deploy/raspberrypi/setup_pi.sh
+docker compose -f deploy/raspberrypi/docker-compose.pi.yml up --build -d
+```
+
+Preset files:
+
+- `deploy/raspberrypi/config.pi.yaml`
+- `deploy/raspberrypi/docker-compose.pi.yml`
+- `deploy/raspberrypi/setup_pi.sh`
+
+This profile:
+
+- lowers concurrency for Pi stability,
+- stretches background intervals,
+- pre-creates NAS import folders,
+- enables a container healthcheck,
+- and tunes offline/storage defaults for small ARM systems.
 
 ### systemd
 

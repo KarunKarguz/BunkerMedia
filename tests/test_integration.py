@@ -178,6 +178,8 @@ class IntegrationTests(unittest.TestCase):
                         "force_offline_mode: true",
                         "local_watch_folders:",
                         f"  - {media_dir}",
+                        "import_watch_folders:",
+                        f"  - {media_dir}",
                     ]
                 ),
                 encoding="utf-8",
@@ -190,9 +192,11 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("/acquire", paths)
             self.assertIn("/schema", paths)
             self.assertIn("/metrics", paths)
+            self.assertIn("/system", paths)
             self.assertIn("/offline/inventory", paths)
             self.assertIn("/offline/plan", paths)
             self.assertIn("/storage/enforce", paths)
+            self.assertIn("/imports/organize", paths)
 
             async def _exercise_api() -> None:
                 async with app.router.lifespan_context(app):
@@ -217,6 +221,10 @@ class IntegrationTests(unittest.TestCase):
                         self.assertEqual(inventory.status_code, 200)
                         self.assertIn("downloaded_storage_bytes", inventory.json())
 
+                        system = await client.get("/system")
+                        self.assertEqual(system.status_code, 200)
+                        self.assertIn("platform", system.json())
+
                         planned = await client.post("/offline/plan")
                         self.assertEqual(planned.status_code, 200)
                         self.assertIn("status", planned.json())
@@ -224,6 +232,10 @@ class IntegrationTests(unittest.TestCase):
                         storage = await client.post("/storage/enforce")
                         self.assertEqual(storage.status_code, 200)
                         self.assertIn("status", storage.json())
+
+                        imports = await client.post("/imports/organize")
+                        self.assertEqual(imports.status_code, 200)
+                        self.assertIn("status", imports.json())
 
             asyncio.run(_exercise_api())
 

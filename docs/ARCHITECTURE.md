@@ -20,6 +20,8 @@ BunkerMedia is organized into these runtime layers:
 - `network.py`: online/offline detection and sync-window checks
 - `planner.py`: offline horizon queue planning
 - `storage_policy.py`: storage budget enforcement and eviction policy
+- `system_monitor.py`: low-overhead appliance telemetry for disk, memory, load, and Pi temperature
+- `import_organizer.py`: NAS/local drop-folder ingest and library auto-organization
 - `metrics.py`: in-process counters/gauges/timers for observability
 - `maintenance.py`: backup and restore operations
 

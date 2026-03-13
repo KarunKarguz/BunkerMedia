@@ -8,69 +8,179 @@
   </head>
   <body>
     <div class="backdrop"></div>
+    <div class="grain"></div>
+
     <header class="topbar">
       <div class="brand">
-        <span class="brand-main">BUNKU</span>
-        <span class="brand-sub">Bunker Mode</span>
+        <span class="brand-mark">BUNKU</span>
+        <div class="brand-copy">
+          <span class="brand-main">Bunker Mode</span>
+          <span class="brand-sub">Local-first streaming vault</span>
+        </div>
       </div>
-      <div class="status" id="status-pill">Booting...</div>
+      <div class="topbar-actions">
+        <div class="status" id="status-pill">Booting...</div>
+      </div>
     </header>
 
-    <main class="layout">
-      <section class="hero panel">
-        <div>
-          <h1>Everything local. Sync when online.</h1>
+    <main class="shell">
+      <section class="hero-frame">
+        <article class="hero-copy panel">
+          <div class="eyebrow">Offline-ready cinema</div>
+          <h1>Run your bunker like a private streaming service.</h1>
           <p>
-            Bunku Mode keeps your LAN library ready first, then opportunistically discovers and downloads new content
-            when network is available.
+            Everything stays playable on your LAN first. When network is available, BunkerMedia hunts for new content,
+            queues it in the background, and keeps the vault topped up.
           </p>
-        </div>
-        <div class="hero-actions">
-          <button id="refresh-btn" class="btn btn-primary">Refresh</button>
-          <button id="sync-btn" class="btn btn-soft">Trigger Sync</button>
-        </div>
+          <div class="hero-actions">
+            <button id="refresh-btn" class="btn btn-primary">Refresh Library</button>
+            <button id="sync-btn" class="btn btn-ghost">Force Sync</button>
+            <button id="imports-btn" class="btn btn-ghost">Import from NAS</button>
+            <button id="plan-btn" class="btn btn-gold">Top Up Offline Cache</button>
+            <button id="storage-btn" class="btn btn-ghost">Clean Storage</button>
+          </div>
+          <div class="hero-strip" id="hero-strip"></div>
+        </article>
+
+        <article class="feature-stage panel" id="featured-panel">
+          <div class="feature-backdrop"></div>
+          <div class="feature-content">
+            <div class="eyebrow">Tonight's top pick</div>
+            <h2 id="featured-title">Loading recommendations...</h2>
+            <p id="featured-meta" class="feature-meta"></p>
+            <p id="featured-note" class="feature-note"></p>
+            <div class="feature-actions" id="featured-actions"></div>
+          </div>
+        </article>
       </section>
 
-      <section class="search panel">
+      <section class="control-grid">
+        <article class="panel command-panel">
+          <div class="section-head">
+            <h2>Add Source</h2>
+            <span class="hint">Queue videos, playlists, or channels</span>
+          </div>
+          <form id="ingest-form" class="stack-form">
+            <input
+              id="ingest-url"
+              type="url"
+              placeholder="Paste YouTube video / playlist / channel URL"
+              required
+            />
+            <div class="stack-row">
+              <select id="ingest-type" aria-label="Source type">
+                <option value="auto">Auto Detect</option>
+                <option value="single">Single Video</option>
+                <option value="playlist" selected>Playlist</option>
+                <option value="channel">Channel</option>
+              </select>
+              <button class="btn btn-primary" type="submit">Queue in Background</button>
+            </div>
+          </form>
+          <p class="inline-note">
+            Playlist downloads land under <code>media/playlists/&lt;playlist name&gt;/</code> in playlist order.
+          </p>
+          <p class="inline-note">
+            NAS drop-folder ingest can also be triggered with <strong>Import from NAS</strong> when files are placed in
+            configured import folders.
+          </p>
+        </article>
+
+        <article class="panel command-panel">
+          <div class="section-head">
+            <h2>Search Vault</h2>
+            <span class="hint">Local metadata and downloaded content</span>
+          </div>
+          <form id="search-form" class="stack-form">
+            <input id="search-input" type="text" placeholder="Search title or channel" />
+            <div class="stack-row">
+              <button class="btn btn-gold" type="submit">Search</button>
+            </div>
+          </form>
+          <div id="search-results" class="card-row compact-row"></div>
+        </article>
+      </section>
+
+      <section class="stats-grid" id="stats-grid">
+        <article class="stat-card panel">
+          <span class="stat-label">Offline Reserve</span>
+          <strong class="stat-value" id="stat-offline-hours">0h</strong>
+          <span class="stat-note" id="stat-offline-note">Estimating library horizon</span>
+        </article>
+        <article class="stat-card panel">
+          <span class="stat-label">Queue Pressure</span>
+          <strong class="stat-value" id="stat-queue">0</strong>
+          <span class="stat-note" id="stat-queue-note">No active jobs</span>
+        </article>
+        <article class="stat-card panel">
+          <span class="stat-label">Local Titles</span>
+          <strong class="stat-value" id="stat-titles">0</strong>
+          <span class="stat-note" id="stat-storage-note">0 GB on disk</span>
+        </article>
+        <article class="stat-card panel">
+          <span class="stat-label">Failure Watch</span>
+          <strong class="stat-value" id="stat-deadletters">0</strong>
+          <span class="stat-note" id="stat-deadletters-note">Dead-letter jobs</span>
+        </article>
+      </section>
+
+      <section class="panel appliance-panel">
         <div class="section-head">
-          <h2>Search</h2>
-          <span class="hint">Local metadata + downloaded library</span>
+          <h2>Appliance Health</h2>
+          <span class="hint">Low-overhead Raspberry Pi and NAS telemetry</span>
         </div>
-        <form id="search-form" class="search-form">
-          <input id="search-input" type="text" placeholder="Search title or channel" />
-          <button class="btn btn-primary" type="submit">Find</button>
-        </form>
-        <div id="search-results" class="card-row"></div>
+        <div class="appliance-grid">
+          <article class="appliance-card">
+            <span class="appliance-label">Media Disk</span>
+            <strong class="appliance-value" id="sys-media-free">--</strong>
+            <span class="appliance-note" id="sys-media-note">Waiting for disk scan</span>
+          </article>
+          <article class="appliance-card">
+            <span class="appliance-label">Memory</span>
+            <strong class="appliance-value" id="sys-memory-used">--</strong>
+            <span class="appliance-note" id="sys-memory-note">Waiting for memory info</span>
+          </article>
+          <article class="appliance-card">
+            <span class="appliance-label">CPU Temp</span>
+            <strong class="appliance-value" id="sys-cpu-temp">--</strong>
+            <span class="appliance-note" id="sys-cpu-note">Thermal sensor not available</span>
+          </article>
+          <article class="appliance-card">
+            <span class="appliance-label">System Load</span>
+            <strong class="appliance-value" id="sys-load">--</strong>
+            <span class="appliance-note" id="sys-load-note">Waiting for load average</span>
+          </article>
+        </div>
       </section>
 
-      <section class="panel">
+      <section class="panel rail-panel">
         <div class="section-head">
           <h2>Continue Watching</h2>
-          <span class="hint">Resume local content</span>
+          <span class="hint">Resume local content instantly</span>
         </div>
         <div id="rail-continue" class="card-row"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel rail-panel">
         <div class="section-head">
           <h2>Downloaded Now</h2>
-          <span class="hint">Ready to stream offline</span>
+          <span class="hint">Already inside the bunker</span>
         </div>
         <div id="rail-downloaded" class="card-row"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel rail-panel">
         <div class="section-head">
           <h2>Recommended For You</h2>
-          <span class="hint">Hybrid score + novelty</span>
+          <span class="hint">Hybrid intelligence, trend score, and behavioral signals</span>
         </div>
         <div id="rail-recommended" class="card-row"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel rail-panel">
         <div class="section-head">
           <h2>Fresh Sync Results</h2>
-          <span class="hint">Recently discovered</span>
+          <span class="hint">Recently discovered and ready to queue</span>
         </div>
         <div id="rail-fresh" class="card-row"></div>
       </section>
@@ -78,8 +188,8 @@
       <section class="queue-grid">
         <article class="panel">
           <div class="section-head">
-            <h2>Queue</h2>
-            <span class="hint">Pending and processing jobs</span>
+            <h2>Download Queue</h2>
+            <span class="hint">Pending and active background jobs</span>
           </div>
           <div id="queue-list" class="list"></div>
         </article>
@@ -87,7 +197,7 @@
         <article class="panel">
           <div class="section-head">
             <h2>Dead Letters</h2>
-            <span class="hint">Failures requiring review</span>
+            <span class="hint">Failures that need retry or review</span>
           </div>
           <div id="deadletters-list" class="list"></div>
         </article>
@@ -95,16 +205,26 @@
     </main>
 
     <template id="video-card-template">
-      <article class="card">
-        <h3 class="card-title"></h3>
-        <p class="card-meta"></p>
-        <p class="card-note"></p>
-        <div class="card-actions"></div>
+      <article class="video-card">
+        <div class="video-art">
+          <span class="video-badge"></span>
+          <span class="video-chip"></span>
+        </div>
+        <div class="video-copy">
+          <h3 class="video-title"></h3>
+          <p class="video-meta"></p>
+          <p class="video-note"></p>
+          <div class="video-actions"></div>
+        </div>
       </article>
     </template>
 
     <template id="job-row-template">
       <article class="job-row">
+        <div class="job-topline">
+          <span class="job-state"></span>
+          <span class="job-priority"></span>
+        </div>
         <div class="job-main"></div>
         <div class="job-sub"></div>
         <div class="job-actions"></div>

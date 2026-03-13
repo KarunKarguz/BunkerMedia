@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.0] - 2026-03-13
+
+### Added
+
+- NAS/local import organizer for classifying and moving dropped media into the managed library tree.
+- `POST /imports/organize` API endpoint and Bunku UI control for manual import runs.
+- Configurable import watch folders, move/copy mode, and scan limits.
+
+### Changed
+
+- Managed library folders are now part of local discovery so organized imports appear automatically in Bunku.
+
+## [0.1.9] - 2026-03-13
+
+### Added
+
+- Appliance telemetry endpoint for disk, memory, load, and Raspberry Pi CPU temperature.
+- Bunku dashboard controls for offline top-up and storage cleanup actions.
+- Raspberry Pi deployment preset, compose profile, and bootstrap script.
+
+### Changed
+
+- Bunku UI now exposes system health as part of the home screen, making it usable as a Pi/NAS appliance dashboard.
+
 ## [0.1.8] - 2026-03-08
 
 ### Added

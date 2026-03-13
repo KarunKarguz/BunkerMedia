@@ -4,12 +4,14 @@ import asyncio
 from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
 from bunkermedia.intelligence import build_hash_embedding, cosine_similarity
+from bunkermedia.import_organizer import ImportOrganizer
 from bunkermedia.maintenance import backup_state, restore_state
 from bunkermedia.models import Recommendation, VideoMetadata
 from bunkermedia.network import NetworkStateManager
 from bunkermedia.planner import OfflinePlanner
 from bunkermedia.service import BunkerService
 from bunkermedia.storage_policy import StoragePolicyManager
+from bunkermedia.system_monitor import SystemMonitor
 
 
 def test_config_defaults(tmp_path: Path) -> None:
@@ -274,3 +276,40 @@ def test_storage_policy_enforces_budget(tmp_path: Path) -> None:
     assert not evict_file.exists()
     assert int(db.get_video("evict")["downloaded"]) == 0
     db.close()
+
+
+def test_system_monitor_snapshot(tmp_path: Path) -> None:
+    media = tmp_path / "media"
+    media.mkdir(parents=True, exist_ok=True)
+    monitor = SystemMonitor(media, logger=type("L", (), {"info": lambda *a, **k: None})())
+    snapshot = monitor.snapshot()
+    assert "platform" in snapshot
+    assert "media_disk" in snapshot
+    assert "is_raspberry_pi" in snapshot
+
+
+def test_import_organizer_moves_video_into_library(tmp_path: Path) -> None:
+    media_root = tmp_path / "media"
+    imports_root = media_root / "imports"
+    incoming = imports_root / "travel"
+    incoming.mkdir(parents=True, exist_ok=True)
+    source = incoming / "camp walk.mp4"
+    source.write_bytes(b"video")
+
+    from bunkermedia.library import MediaLibrary
+
+    library = MediaLibrary(media_root)
+    library.ensure_layout()
+    organizer = ImportOrganizer(
+        library,
+        [imports_root],
+        move_mode="move",
+        scan_limit=50,
+        logger=type("L", (), {"info": lambda *a, **k: None, "exception": lambda *a, **k: None})(),
+    )
+    result = organizer.organize_once()
+    assert result["status"] == "ok"
+    assert int(result["organized"]) == 1
+    target = media_root / "library" / "video" / "travel" / "camp walk.mp4"
+    assert target.exists()
+    assert not source.exists()

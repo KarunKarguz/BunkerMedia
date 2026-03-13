@@ -32,6 +32,9 @@ No built-in piracy-focused workflows will be added.
 - Hybrid recommendation engine with explain mode.
 - Retry backoff + dead-letter queue.
 - FastAPI server and CLI surface.
+- Appliance dashboard with queue/offline/storage/system telemetry.
+- Raspberry Pi deployment preset and bootstrap assets.
+- NAS/local import organization and managed library ingest.
 
 ### Key Gaps to "Complete Home Media Server"
 

@@ -36,6 +36,10 @@ class AppConfig:
     playlist_feeds: list[str] = field(default_factory=list)
     rss_feeds: list[str] = field(default_factory=list)
     local_watch_folders: list[Path] = field(default_factory=list)
+    import_watch_folders: list[Path] = field(default_factory=list)
+    auto_organize_imports: bool = True
+    import_move_mode: str = "move"
+    import_scan_limit: int = 500
     prefer_low_power_mode: bool = True
     auto_start_workers: bool = True
     embedding_dim: int = 128
@@ -89,6 +93,10 @@ class AppConfig:
             playlist_feeds=list(raw.get("playlist_feeds", [])),
             rss_feeds=list(raw.get("rss_feeds", [])),
             local_watch_folders=cls._resolve_paths(base_dir, raw.get("local_watch_folders", [])),
+            import_watch_folders=cls._resolve_paths(base_dir, raw.get("import_watch_folders", [])),
+            auto_organize_imports=bool(raw.get("auto_organize_imports", True)),
+            import_move_mode=str(raw.get("import_move_mode", "move")).strip().lower(),
+            import_scan_limit=int(raw.get("import_scan_limit", 500)),
             prefer_low_power_mode=bool(raw.get("prefer_low_power_mode", True)),
             auto_start_workers=bool(raw.get("auto_start_workers", True)),
             embedding_dim=int(raw.get("embedding_dim", 128)),

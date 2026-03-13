@@ -5,6 +5,7 @@ from pathlib import Path
 from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
 from bunkermedia.downloader import Downloader
+from bunkermedia.import_organizer import ImportOrganizer
 from bunkermedia.intelligence import IntelligenceEngine
 from bunkermedia.library import MediaLibrary
 from bunkermedia.logging_utils import setup_logging
@@ -16,6 +17,7 @@ from bunkermedia.providers import LocalFolderProvider, ProviderRegistry, RSSProv
 from bunkermedia.recommender import RecommendationEngine
 from bunkermedia.scraper import Scraper
 from bunkermedia.storage_policy import StoragePolicyManager
+from bunkermedia.system_monitor import SystemMonitor
 from bunkermedia.workers import WorkerManager
 
 
@@ -38,10 +40,19 @@ class BunkerService:
         self.recommender = RecommendationEngine(self.db, self.logger)
         self.offline_planner = OfflinePlanner(self.config, self.db, self.recommender, self.logger)
         self.storage_policy = StoragePolicyManager(self.config, self.db, self.logger)
+        self.system_monitor = SystemMonitor(self.config.download_path, self.logger)
+        self.import_organizer = ImportOrganizer(
+            self.library,
+            self.config.import_watch_folders,
+            self.config.import_move_mode,
+            self.config.import_scan_limit,
+            self.logger,
+        )
         self.providers = ProviderRegistry()
+        watch_folders = self._local_watch_folders()
         self.providers.register(YouTubeProvider(self.scraper, self.downloader))
         self.providers.register(RSSProvider(self.db, self.downloader, self.logger))
-        self.providers.register(LocalFolderProvider(self.db, self.logger, self.config.local_watch_folders))
+        self.providers.register(LocalFolderProvider(self.db, self.logger, watch_folders))
         self.workers = WorkerManager(
             self.config,
             self.db,
@@ -54,6 +65,7 @@ class BunkerService:
             self.metrics,
             self.offline_planner,
             self.storage_policy,
+            self.import_organizer,
         )
         self._initialized = False
 
@@ -112,7 +124,12 @@ class BunkerService:
                 if item.source_url:
                     await self.add_url(item.source_url, target_type="auto", priority=1)
 
-        if self.config.local_watch_folders:
+        if self.config.auto_organize_imports and self.config.import_watch_folders:
+            organized = self.organize_imports()
+            if int(organized.get("organized") or 0) > 0:
+                self.metrics.inc("imports_organized_total", float(int(organized.get("organized") or 0)))
+
+        if self._local_watch_folders():
             await self.discover(provider="local", source="default", limit=2000)
 
         storage_before = self.enforce_storage_policy()
@@ -219,6 +236,12 @@ class BunkerService:
     def get_offline_inventory(self) -> dict[str, int]:
         return self.db.get_offline_inventory_stats()
 
+    def get_system_state(self) -> dict[str, object]:
+        return self.system_monitor.snapshot()
+
+    def organize_imports(self) -> dict[str, object]:
+        return self.import_organizer.organize_once()
+
     def get_health_state(self) -> dict[str, object]:
         return {
             "status": "ok",
@@ -227,7 +250,19 @@ class BunkerService:
             "schema_version": self.db.get_schema_version(),
             "providers": self.list_providers(),
             "offline_inventory": self.get_offline_inventory(),
+            "system": self.get_system_state(),
         }
+
+    def _local_watch_folders(self) -> list[Path]:
+        ordered: list[Path] = []
+        seen: set[str] = set()
+        for path in [*self.config.local_watch_folders, *self.library.organized_watch_folders()]:
+            key = str(path.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(path)
+        return ordered
 
     def render_metrics(self) -> str:
         self.metrics.set_gauge("queue_pending", float(len(self.db.list_download_jobs(status="pending", limit=5000))))

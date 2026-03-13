@@ -50,6 +50,9 @@ def _build_parser() -> argparse.ArgumentParser:
     status_cmd = sub.add_parser("status", help="Show runtime status")
     status_cmd.add_argument("--json", action="store_true", help="Output JSON")
 
+    imports_cmd = sub.add_parser("imports-organize", help="Organize files from NAS/import folders into library")
+    imports_cmd.add_argument("--json", action="store_true", help="Output JSON")
+
     plan_cmd = sub.add_parser("plan-offline", help="Queue downloads to satisfy offline target horizon")
     plan_cmd.add_argument("--json", action="store_true", help="Output JSON")
 
@@ -207,6 +210,20 @@ async def _cmd_status(args: argparse.Namespace) -> None:
     await service.shutdown()
 
 
+async def _cmd_imports_organize(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    result = service.organize_imports()
+    if args.json:
+        print(json.dumps(result, separators=(",", ":"), ensure_ascii=True))
+    else:
+        print(f"status: {result.get('status')}")
+        print(f"organized: {result.get('organized', 0)}")
+        print(f"duplicates: {result.get('duplicates', 0)}")
+        print(f"errors: {result.get('errors', 0)}")
+    await service.shutdown()
+
+
 async def _cmd_plan_offline(args: argparse.Namespace) -> None:
     service = BunkerService(config_path=args.config)
     await service.initialize()
@@ -348,6 +365,9 @@ def main() -> None:
         return
     if args.command == "status":
         asyncio.run(_cmd_status(args))
+        return
+    if args.command == "imports-organize":
+        asyncio.run(_cmd_imports_organize(args))
         return
     if args.command == "plan-offline":
         asyncio.run(_cmd_plan_offline(args))
