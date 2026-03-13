@@ -193,6 +193,9 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("/schema", paths)
             self.assertIn("/metrics", paths)
             self.assertIn("/system", paths)
+            self.assertIn("/bunku/manifest.webmanifest", paths)
+            self.assertIn("/bunku/sw.js", paths)
+            self.assertIn("/bunku/icon.svg", paths)
             self.assertIn("/offline/inventory", paths)
             self.assertIn("/offline/plan", paths)
             self.assertIn("/storage/enforce", paths)
@@ -240,6 +243,18 @@ class IntegrationTests(unittest.TestCase):
                         imports = await client.post("/imports/organize")
                         self.assertEqual(imports.status_code, 200)
                         self.assertIn("status", imports.json())
+
+                        manifest = await client.get("/bunku/manifest.webmanifest")
+                        self.assertEqual(manifest.status_code, 200)
+                        self.assertEqual(manifest.headers["content-type"].split(";")[0], "application/manifest+json")
+
+                        sw = await client.get("/bunku/sw.js")
+                        self.assertEqual(sw.status_code, 200)
+                        self.assertIn("CACHE_NAME", sw.text)
+
+                        icon = await client.get("/bunku/icon.svg")
+                        self.assertEqual(icon.status_code, 200)
+                        self.assertIn("<svg", icon.text)
 
                         profiles = await client.get("/profiles")
                         self.assertEqual(profiles.status_code, 200)

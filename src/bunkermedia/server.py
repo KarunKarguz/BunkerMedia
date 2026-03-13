@@ -110,6 +110,27 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             raise HTTPException(status_code=404, detail="UI script not found")
         return FileResponse(str(js), media_type="application/javascript")
 
+    @app.get("/bunku/manifest.webmanifest", include_in_schema=False)
+    async def bunku_manifest():
+        manifest = ui_root / "manifest.webmanifest"
+        if not manifest.exists():
+            raise HTTPException(status_code=404, detail="UI manifest not found")
+        return FileResponse(str(manifest), media_type="application/manifest+json")
+
+    @app.get("/bunku/sw.js", include_in_schema=False)
+    async def bunku_service_worker():
+        script = ui_root / "sw.js"
+        if not script.exists():
+            raise HTTPException(status_code=404, detail="UI service worker not found")
+        return FileResponse(str(script), media_type="application/javascript")
+
+    @app.get("/bunku/icon.svg", include_in_schema=False)
+    async def bunku_icon():
+        icon = ui_root / "icon.svg"
+        if not icon.exists():
+            raise HTTPException(status_code=404, detail="UI icon not found")
+        return FileResponse(str(icon), media_type="image/svg+xml")
+
     @app.get("/bunku/data/home")
     async def bunku_home(limit: int = Query(16, ge=4, le=60)):
         await service.refresh_network_state()

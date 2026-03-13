@@ -32,6 +32,7 @@ body {
     radial-gradient(circle at top left, rgba(149, 14, 34, 0.26), transparent 34%),
     radial-gradient(circle at 82% 12%, rgba(179, 130, 40, 0.16), transparent 24%),
     linear-gradient(180deg, #111112 0%, #090909 42%, #040404 100%);
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 body.modal-open {
@@ -223,7 +224,7 @@ body.modal-open {
 .shell {
   width: min(1380px, calc(100vw - 32px));
   margin: 0 auto;
-  padding: 24px 0 40px;
+  padding: 24px 0 calc(40px + env(safe-area-inset-bottom, 0));
   display: grid;
   gap: 20px;
 }
@@ -882,6 +883,15 @@ body.tv-mode .btn:hover {
     padding-top: 18px;
   }
 
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-actions .btn {
+    width: 100%;
+  }
+
   .hero-copy,
   .feature-stage,
   .command-panel,
@@ -893,6 +903,10 @@ body.tv-mode .btn:hover {
   .hero-copy h1 {
     max-width: none;
     font-size: 2.4rem;
+  }
+
+  .feature-content h2 {
+    font-size: 2rem;
   }
 
   .hero-strip {
@@ -915,6 +929,19 @@ body.tv-mode .btn:hover {
     grid-auto-flow: row;
     grid-auto-columns: auto;
     overflow-x: visible;
+  }
+
+  .video-copy {
+    gap: 10px;
+  }
+
+  .video-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .video-actions .btn {
+    width: 100%;
   }
 
   .player-modal {

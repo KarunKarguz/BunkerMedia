@@ -3,7 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#070707" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Bunku Mode</title>
+    <link rel="manifest" href="/bunku/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/bunku/icon.svg" />
+    <link rel="apple-touch-icon" href="/bunku/icon.svg" />
     <link rel="stylesheet" href="/bunku/styles.css" />
   </head>
   <body>
@@ -59,6 +65,7 @@
             <button id="imports-btn" class="btn btn-ghost">Import from NAS</button>
             <button id="plan-btn" class="btn btn-gold">Top Up Offline Cache</button>
             <button id="storage-btn" class="btn btn-ghost">Clean Storage</button>
+            <button id="install-btn" class="btn btn-ghost" type="button" hidden>Install App</button>
           </div>
           <div class="tv-helper">
             <span>TV controls</span>

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.3] - 2026-03-13
+
+### Added
+
+- PWA-style Bunku app shell with web manifest, service worker, and install prompt for mobile and TV browsers.
+- Dedicated Bunku app icon and cached shell assets for faster repeat loads on LAN devices.
+
+### Changed
+
+- Mobile layout now uses safer button grids and bottom safe-area spacing for phone and tablet use.
+
 ## [0.2.2] - 2026-03-13
 
 ### Added

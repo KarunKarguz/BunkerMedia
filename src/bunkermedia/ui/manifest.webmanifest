@@ -1,0 +1,31 @@
+{
+  "name": "Bunku Mode",
+  "short_name": "Bunku",
+  "description": "Local-first streaming vault for BunkerMedia on LAN, TV, and mobile devices.",
+  "start_url": "/bunku",
+  "scope": "/bunku/",
+  "display": "standalone",
+  "background_color": "#070707",
+  "theme_color": "#070707",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/bunku/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open Vault",
+      "short_name": "Vault",
+      "url": "/bunku"
+    },
+    {
+      "name": "Search Library",
+      "short_name": "Search",
+      "url": "/bunku#search"
+    }
+  ]
+}

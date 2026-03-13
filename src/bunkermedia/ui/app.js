@@ -11,6 +11,7 @@ const syncBtn = document.getElementById("sync-btn");
 const importsBtn = document.getElementById("imports-btn");
 const planBtn = document.getElementById("plan-btn");
 const storageBtn = document.getElementById("storage-btn");
+const installBtn = document.getElementById("install-btn");
 const ingestForm = document.getElementById("ingest-form");
 const ingestUrl = document.getElementById("ingest-url");
 const ingestType = document.getElementById("ingest-type");
@@ -68,6 +69,7 @@ let activeVideoId = null;
 let lastFocusedElement = null;
 let tvModeEnabled = localStorage.getItem(TV_MODE_KEY) !== "off";
 let currentProfileId = null;
+let deferredInstallPrompt = null;
 
 function setStatus(text, tone = "neutral") {
   statusPill.textContent = text;
@@ -101,6 +103,10 @@ function setTvMode(enabled) {
 
 function setKidsModeBadge(enabled) {
   kidsBadge.hidden = !enabled;
+}
+
+function setInstallAvailability(available) {
+  installBtn.hidden = !available;
 }
 
 function renderProfiles(activeProfile, profiles = []) {
@@ -835,6 +841,17 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+async function registerShellServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+  try {
+    await navigator.serviceWorker.register("/bunku/sw.js", { scope: "/bunku/" });
+  } catch (err) {
+    console.error("service worker registration failed", err);
+  }
+}
+
 refreshBtn.addEventListener("click", () => {
   loadHome();
 });
@@ -872,6 +889,20 @@ profileForm.addEventListener("submit", async (event) => {
     console.error(err);
     setStatus("Profile creation failed", "bad");
   }
+});
+
+installBtn.addEventListener("click", async () => {
+  if (!deferredInstallPrompt) {
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  try {
+    await deferredInstallPrompt.userChoice;
+  } catch (err) {
+    console.error(err);
+  }
+  deferredInstallPrompt = null;
+  setInstallAvailability(false);
 });
 
 syncBtn.addEventListener("click", async () => {
@@ -1009,5 +1040,19 @@ document.addEventListener("keydown", async (event) => {
   }
 });
 
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  setInstallAvailability(true);
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  setInstallAvailability(false);
+  setStatus("Bunku installed on this device", "good");
+});
+
 setTvMode(tvModeEnabled);
+setInstallAvailability(false);
+registerShellServiceWorker();
 loadHome();

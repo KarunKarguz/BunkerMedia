@@ -104,6 +104,7 @@ Deliver a local "Bunker Mode Netflix" interface for family-friendly usage.
 - [x] Queue controls: add source, sync, offline top-up, storage cleanup, retry dead-letter.
 - [x] Queue controls: Prioritize and Pause/Resume.
 - [x] Profile switcher with kids mode.
+- [x] Installable mobile/TV app shell (manifest + service worker).
 - [ ] Queue controls: Clear Failed.
 
 ### Exit Criteria

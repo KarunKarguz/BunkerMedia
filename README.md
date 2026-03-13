@@ -24,7 +24,7 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - SQLite-backed metadata, watch history, and preferences
 - Hybrid recommendation engine (semantic + behavioral + trending) with diversity rerank
 - Multi-user profiles with active-profile switching and kids-safe mode
-- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, queue panel, recommendation reasoning, feedback controls, and inline playback
+- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, queue panel, recommendation reasoning, feedback controls, inline playback, and installable app-shell behavior
 - FastAPI media server
 - Async background workers for sync and queued downloads
 - Offline horizon planner for auto-queuing watch-ready content
@@ -127,6 +127,7 @@ Inside Bunku, TV mode is enabled by default:
 - `Esc` closes the inline player overlay
 - Profiles can be switched from the top bar, including kids-safe profiles
 - Queue rows support pause/resume and priority tuning directly from the UI
+- On supported browsers, `Install App` pins Bunku to a phone/tablet/TV home screen
 
 ## API Endpoints
 
@@ -134,6 +135,9 @@ Inside Bunku, TV mode is enabled by default:
 - `GET /metrics`
 - `GET /schema`
 - `GET /system`
+- `GET /bunku/manifest.webmanifest`
+- `GET /bunku/sw.js`
+- `GET /bunku/icon.svg`
 - `GET /providers`
 - `GET /profiles`
 - `POST /profiles`
