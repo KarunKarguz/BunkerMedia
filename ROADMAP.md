@@ -35,13 +35,14 @@ No built-in piracy-focused workflows will be added.
 - Appliance dashboard with queue/offline/storage/system telemetry.
 - Raspberry Pi deployment preset and bootstrap assets.
 - NAS/local import organization and managed library ingest.
+- TV-mode Bunku UI with keyboard/D-pad navigation and inline playback.
 
 ### Key Gaps to "Complete Home Media Server"
 
-- Visual local-first app experience (Bunku Mode UI).
 - Multi-provider ingestion plugin architecture.
-- Offline availability planner (what to pre-download, when).
-- More robust recommendation feedback loops.
+- Deeper Bunku controls (filters, recommendation reasoning, queue prioritization).
+- Multi-user profile and parental mode support.
+- More robust recommendation feedback loops and autopilot policies.
 - Full observability, backups, and upgrade tooling.
 
 ## Phase A: MVP Baseline (Now -> v0.2)
@@ -95,10 +96,13 @@ Deliver a local "Bunker Mode Netflix" interface for family-friendly usage.
 
 - [x] Web UI shell with TV-friendly browsing.
 - [x] Home screen rails: Continue Watching, Downloaded, Recommended, New.
-- [ ] Search + filters (duration, channel, freshness, downloaded-only).
+- [x] Search from the UI.
+- [ ] Filters (duration, channel, freshness, downloaded-only).
+- [x] Inline playback modal with keyboard/D-pad friendly controls.
 - [ ] Recommendation cards with "Why this" explanation.
 - [ ] Feedback controls: Like, Dislike, Not Interested, Hide Channel.
-- [ ] Queue controls: Prioritize, Pause, Retry Dead-letter, Clear Failed.
+- [x] Queue controls: add source, sync, offline top-up, storage cleanup, retry dead-letter.
+- [ ] Queue controls: Prioritize, Pause, Clear Failed.
 
 ### Exit Criteria
 
@@ -171,6 +175,6 @@ Production-grade open-source release for broad self-hosting.
 ## Next 4-Week Execution Plan
 
 1. Add resumable background download batches and partial-recovery logic.
-2. Expand Bunku Mode controls (filters, explicit "why this", queue management actions).
+2. Expand Bunku Mode controls (filters, explicit "why this", queue prioritization/pause).
 3. Add optional authentication layer for non-LAN exposure.
 4. Add community provider adapter registry and validation policy.

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1] - 2026-03-13
+
+### Added
+
+- TV-mode navigation for Bunku with keyboard/D-pad movement between controls, rails, and queue items.
+- Inline playback modal for local media with quick actions for mark-watched and external stream opening.
+- Couch-friendly visual focus treatment and horizontal media rails tuned for Pi/TV screens.
+
+### Changed
+
+- Bunku now defaults to a remote-friendly interaction model while still supporting mouse and touch input.
+
 ## [0.2.0] - 2026-03-13
 
 ### Added

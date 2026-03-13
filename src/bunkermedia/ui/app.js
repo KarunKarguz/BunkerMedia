@@ -1,4 +1,5 @@
 const statusPill = document.getElementById("status-pill");
+const tvModeBtn = document.getElementById("tv-mode-btn");
 const refreshBtn = document.getElementById("refresh-btn");
 const syncBtn = document.getElementById("sync-btn");
 const importsBtn = document.getElementById("imports-btn");
@@ -45,6 +46,20 @@ const queueList = document.getElementById("queue-list");
 const deadlettersList = document.getElementById("deadletters-list");
 const cardTemplate = document.getElementById("video-card-template");
 const jobTemplate = document.getElementById("job-row-template");
+const playerModal = document.getElementById("player-modal");
+const playerBackdrop = document.getElementById("player-backdrop");
+const playerTitle = document.getElementById("player-title");
+const playerMeta = document.getElementById("player-meta");
+const playerVideo = document.getElementById("player-video");
+const playerWatchedBtn = document.getElementById("player-watched-btn");
+const playerExternalBtn = document.getElementById("player-external-btn");
+const playerCloseBtn = document.getElementById("player-close-btn");
+
+const TV_MODE_KEY = "bunkermedia.tv_mode";
+const videoRegistry = new Map();
+let activeVideoId = null;
+let lastFocusedElement = null;
+let tvModeEnabled = localStorage.getItem(TV_MODE_KEY) !== "off";
 
 function setStatus(text, tone = "neutral") {
   statusPill.textContent = text;
@@ -62,9 +77,18 @@ function emptyState(container, message) {
 function actionButton(label, className, handler) {
   const button = document.createElement("button");
   button.className = `btn ${className}`;
+  button.type = "button";
   button.textContent = label;
   button.addEventListener("click", handler);
   return button;
+}
+
+function setTvMode(enabled) {
+  tvModeEnabled = Boolean(enabled);
+  document.body.classList.toggle("tv-mode", tvModeEnabled);
+  tvModeBtn.textContent = tvModeEnabled ? "TV Mode On" : "TV Mode Off";
+  tvModeBtn.setAttribute("aria-pressed", String(tvModeEnabled));
+  localStorage.setItem(TV_MODE_KEY, tvModeEnabled ? "on" : "off");
 }
 
 function formatHours(seconds = 0) {
@@ -111,6 +135,173 @@ function chipText(video, source) {
   return "Metadata";
 }
 
+function registerVideo(video, source) {
+  if (!video || !video.video_id) {
+    return null;
+  }
+  const existing = videoRegistry.get(video.video_id) || {};
+  const merged = { ...existing, ...video, source_context: source };
+  videoRegistry.set(video.video_id, merged);
+  return merged;
+}
+
+function streamUrl(videoId) {
+  return `/stream/${encodeURIComponent(videoId)}`;
+}
+
+async function markWatched(videoId, completed = true) {
+  if (!videoId) {
+    return;
+  }
+  await sendFeedback(videoId, {
+    liked: null,
+    disliked: null,
+    completed,
+    watch_seconds: Math.round(playerVideo.currentTime || 0),
+  });
+}
+
+function openPlayer(videoId) {
+  const video = videoRegistry.get(videoId);
+  if (!video || !(video.downloaded || video.local_path)) {
+    return;
+  }
+  activeVideoId = videoId;
+  lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  playerTitle.textContent = video.title || "Untitled";
+  playerMeta.textContent = `${video.channel || "Unknown"}  |  ${video.upload_date || "Undated"}  |  Local playback`;
+  playerExternalBtn.dataset.videoId = videoId;
+  playerWatchedBtn.dataset.videoId = videoId;
+  playerVideo.src = streamUrl(videoId);
+  playerVideo.dataset.videoId = videoId;
+  playerModal.hidden = false;
+  document.body.classList.add("modal-open");
+  playerCloseBtn.focus();
+  playerVideo.play().catch(() => {});
+}
+
+function closePlayer() {
+  if (playerModal.hidden) {
+    return;
+  }
+  playerVideo.pause();
+  playerVideo.removeAttribute("src");
+  playerVideo.load();
+  playerModal.hidden = true;
+  document.body.classList.remove("modal-open");
+  activeVideoId = null;
+  if (lastFocusedElement) {
+    lastFocusedElement.focus();
+  }
+}
+
+async function activateCard(card) {
+  const videoId = card.dataset.videoId;
+  const sourceUrl = card.dataset.sourceUrl;
+  const type = card.dataset.targetType || "auto";
+  const isDownloaded = card.dataset.downloaded === "true";
+
+  if (isDownloaded && videoId) {
+    openPlayer(videoId);
+    return;
+  }
+  if (sourceUrl) {
+    await queueUrl(sourceUrl, type, 1);
+  }
+}
+
+function isTypingTarget(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tag = target.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+}
+
+function visibleNavigableElements() {
+  return Array.from(
+    document.querySelectorAll(
+      [
+        "button:not([disabled])",
+        "input:not([disabled])",
+        "select:not([disabled])",
+        ".video-card",
+        ".job-row",
+      ].join(",")
+    )
+  ).filter((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+    if (playerModal.hidden === false) {
+      return playerModal.contains(element);
+    }
+    if (element.closest("[hidden]")) {
+      return false;
+    }
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+  });
+}
+
+function focusElement(element) {
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
+  element.focus({ preventScroll: true });
+  element.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+}
+
+function pickSpatialTarget(elements, activeElement, direction) {
+  if (!(activeElement instanceof HTMLElement)) {
+    return elements[0] || null;
+  }
+  const activeRect = activeElement.getBoundingClientRect();
+  const activeCenterX = activeRect.left + activeRect.width / 2;
+  const activeCenterY = activeRect.top + activeRect.height / 2;
+
+  const candidates = elements
+    .filter((element) => element !== activeElement)
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const deltaX = centerX - activeCenterX;
+      const deltaY = centerY - activeCenterY;
+
+      if (direction === "left" && deltaX >= -12) {
+        return null;
+      }
+      if (direction === "right" && deltaX <= 12) {
+        return null;
+      }
+      if (direction === "up" && deltaY >= -12) {
+        return null;
+      }
+      if (direction === "down" && deltaY <= 12) {
+        return null;
+      }
+
+      const primary = direction === "left" || direction === "right" ? Math.abs(deltaX) : Math.abs(deltaY);
+      const secondary = direction === "left" || direction === "right" ? Math.abs(deltaY) : Math.abs(deltaX);
+      return { element, score: primary * 4 + secondary };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.score - b.score);
+
+  return candidates.length ? candidates[0].element : null;
+}
+
+function moveFocus(direction) {
+  const elements = visibleNavigableElements();
+  if (!elements.length) {
+    return;
+  }
+  const target = pickSpatialTarget(elements, document.activeElement, direction) || elements[0];
+  focusElement(target);
+}
+
 function renderVideoCards(container, videos = [], source = "default") {
   container.innerHTML = "";
   if (!videos.length) {
@@ -119,7 +310,9 @@ function renderVideoCards(container, videos = [], source = "default") {
   }
 
   videos.forEach((video) => {
+    const registeredVideo = registerVideo(video, source) || video;
     const node = cardTemplate.content.cloneNode(true);
+    const card = node.querySelector(".video-card");
     const art = node.querySelector(".video-art");
     const badge = node.querySelector(".video-badge");
     const chip = node.querySelector(".video-chip");
@@ -128,45 +321,77 @@ function renderVideoCards(container, videos = [], source = "default") {
     const note = node.querySelector(".video-note");
     const actions = node.querySelector(".video-actions");
 
-    art.style.setProperty("--poster-hue", `${artSeed(video)}deg`);
-    badge.textContent = videoInitials(video);
-    chip.textContent = chipText(video, source);
-    title.textContent = video.title || "Untitled";
-    meta.textContent = `${video.channel || "Unknown"}  |  ${video.upload_date || "Undated"}`;
+    card.tabIndex = 0;
+    card.dataset.videoId = registeredVideo.video_id || "";
+    card.dataset.sourceUrl = registeredVideo.source_url || "";
+    card.dataset.targetType = "auto";
+    card.dataset.downloaded = String(Boolean(registeredVideo.downloaded || registeredVideo.local_path));
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", registeredVideo.title || "Untitled");
 
-    if (source === "recommended" && video.explanation && video.explanation.components) {
-      const parts = video.explanation.components;
+    art.style.setProperty("--poster-hue", `${artSeed(registeredVideo)}deg`);
+    badge.textContent = videoInitials(registeredVideo);
+    chip.textContent = chipText(registeredVideo, source);
+    title.textContent = registeredVideo.title || "Untitled";
+    meta.textContent = `${registeredVideo.channel || "Unknown"}  |  ${registeredVideo.upload_date || "Undated"}`;
+
+    if (source === "recommended" && registeredVideo.explanation && registeredVideo.explanation.components) {
+      const parts = registeredVideo.explanation.components;
       note.textContent =
-        `score ${(video.score || 0).toFixed(2)}  |  semantic ${parts.semantic_similarity}  |  recency ${parts.recency}`;
-    } else if (video.downloaded || video.local_path) {
+        `score ${(registeredVideo.score || 0).toFixed(2)}  |  semantic ${parts.semantic_similarity}  |  recency ${parts.recency}`;
+    } else if (registeredVideo.downloaded || registeredVideo.local_path) {
       note.textContent = "Ready for offline playback.";
     } else {
-      note.textContent = video.source_url ? "Available to queue in background." : "Metadata only.";
+      note.textContent = registeredVideo.source_url ? "Available to queue in background." : "Metadata only.";
     }
 
-    if (video.downloaded || video.local_path) {
+    card.addEventListener("click", async (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest("button")) {
+        return;
+      }
+      try {
+        await activateCard(card);
+      } catch (err) {
+        console.error(err);
+        setStatus("Card action failed", "bad");
+      }
+    });
+    card.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      try {
+        await activateCard(card);
+      } catch (err) {
+        console.error(err);
+        setStatus("Card action failed", "bad");
+      }
+    });
+
+    if (registeredVideo.downloaded || registeredVideo.local_path) {
       actions.appendChild(
         actionButton("Play", "btn-primary", () => {
-          window.open(`/stream/${encodeURIComponent(video.video_id)}`, "_blank", "noopener");
+          openPlayer(registeredVideo.video_id);
         })
       );
     }
 
     actions.appendChild(
       actionButton("Like", "btn-good", async () => {
-        await sendFeedback(video.video_id, { liked: true, disliked: false, completed: false });
+        await sendFeedback(registeredVideo.video_id, { liked: true, disliked: false, completed: false });
       })
     );
     actions.appendChild(
       actionButton("Dislike", "btn-bad", async () => {
-        await sendFeedback(video.video_id, { liked: false, disliked: true, completed: false });
+        await sendFeedback(registeredVideo.video_id, { liked: false, disliked: true, completed: false });
       })
     );
 
-    if (!video.downloaded && video.source_url) {
+    if (!registeredVideo.downloaded && registeredVideo.source_url) {
       actions.appendChild(
         actionButton("Queue", "btn-ghost", async () => {
-          await queueUrl(video.source_url, "auto", 1);
+          await queueUrl(registeredVideo.source_url, "auto", 1);
         })
       );
     }
@@ -184,11 +409,15 @@ function renderJobs(container, jobs, isDeadLetter = false) {
 
   jobs.forEach((job) => {
     const node = jobTemplate.content.cloneNode(true);
+    const row = node.querySelector(".job-row");
     const state = node.querySelector(".job-state");
     const priority = node.querySelector(".job-priority");
     const main = node.querySelector(".job-main");
     const sub = node.querySelector(".job-sub");
     const actions = node.querySelector(".job-actions");
+
+    row.tabIndex = 0;
+    row.setAttribute("role", "group");
 
     state.textContent = isDeadLetter ? "Dead" : job.status || "pending";
     priority.textContent = `P${job.priority != null ? job.priority : 0}`;
@@ -262,7 +491,8 @@ function renderFeatured(data) {
   if (featured.downloaded || featured.local_path) {
     featuredActions.appendChild(
       actionButton("Play Now", "btn-primary", () => {
-        window.open(`/stream/${encodeURIComponent(featured.video_id)}`, "_blank", "noopener");
+        registerVideo(featured, "featured");
+        openPlayer(featured.video_id);
       })
     );
   }
@@ -357,6 +587,17 @@ async function loadHome() {
     } else {
       setStatus("Online and syncing", "good");
     }
+
+    if (
+      tvModeEnabled &&
+      playerModal.hidden &&
+      (!document.activeElement || document.activeElement === document.body)
+    ) {
+      const firstTarget = visibleNavigableElements()[0];
+      if (firstTarget) {
+        focusElement(firstTarget);
+      }
+    }
   } catch (err) {
     console.error(err);
     setStatus("Refresh failed", "bad");
@@ -389,8 +630,8 @@ async function queueUrl(url, type = "auto", priority = 0) {
 
 async function sendFeedback(videoId, payload) {
   const body = {
-    watch_seconds: 0,
-    completed: false,
+    watch_seconds: payload.watch_seconds != null ? payload.watch_seconds : 0,
+    completed: payload.completed != null ? payload.completed : false,
     liked: payload.liked != null ? payload.liked : null,
     disliked: payload.disliked != null ? payload.disliked : null,
     rating: payload.rating != null ? payload.rating : null,
@@ -457,6 +698,10 @@ refreshBtn.addEventListener("click", () => {
   loadHome();
 });
 
+tvModeBtn.addEventListener("click", () => {
+  setTvMode(!tvModeEnabled);
+});
+
 syncBtn.addEventListener("click", async () => {
   try {
     await triggerSync();
@@ -517,4 +762,80 @@ searchForm.addEventListener("submit", (event) => {
   search(searchInput.value);
 });
 
+playerBackdrop.addEventListener("click", closePlayer);
+playerCloseBtn.addEventListener("click", closePlayer);
+playerExternalBtn.addEventListener("click", () => {
+  if (activeVideoId) {
+    window.open(streamUrl(activeVideoId), "_blank", "noopener");
+  }
+});
+playerWatchedBtn.addEventListener("click", async () => {
+  try {
+    await markWatched(activeVideoId, true);
+    setStatus("Marked as watched", "good");
+    closePlayer();
+  } catch (err) {
+    console.error(err);
+    setStatus("Watch update failed", "bad");
+  }
+});
+playerVideo.addEventListener("ended", async () => {
+  try {
+    await markWatched(activeVideoId, true);
+    setStatus("Playback completed", "good");
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+document.addEventListener("keydown", async (event) => {
+  if (event.key === "Escape" && !playerModal.hidden) {
+    event.preventDefault();
+    closePlayer();
+    return;
+  }
+
+  if (!tvModeEnabled) {
+    return;
+  }
+
+  if (isTypingTarget(event.target) || event.altKey || event.ctrlKey || event.metaKey) {
+    return;
+  }
+
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    moveFocus("left");
+    return;
+  }
+  if (event.key === "ArrowRight") {
+    event.preventDefault();
+    moveFocus("right");
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveFocus("up");
+    return;
+  }
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    moveFocus("down");
+    return;
+  }
+  if (
+    (event.key === "Enter" || event.key === " ") &&
+    document.activeElement &&
+    document.activeElement.classList &&
+    document.activeElement.classList.contains("job-row")
+  ) {
+    event.preventDefault();
+    const retryButton = document.activeElement.querySelector("button");
+    if (retryButton) {
+      retryButton.click();
+    }
+  }
+});
+
+setTvMode(tvModeEnabled);
 loadHome();

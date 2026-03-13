@@ -19,6 +19,9 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <button id="tv-mode-btn" class="btn btn-ghost topbar-btn" type="button" aria-pressed="false">
+          TV Mode Off
+        </button>
         <div class="status" id="status-pill">Booting...</div>
       </div>
     </header>
@@ -38,6 +41,12 @@
             <button id="imports-btn" class="btn btn-ghost">Import from NAS</button>
             <button id="plan-btn" class="btn btn-gold">Top Up Offline Cache</button>
             <button id="storage-btn" class="btn btn-ghost">Clean Storage</button>
+          </div>
+          <div class="tv-helper">
+            <span>TV controls</span>
+            <strong>Arrows move</strong>
+            <strong>Enter plays or queues</strong>
+            <strong>Esc closes player</strong>
           </div>
           <div class="hero-strip" id="hero-strip"></div>
         </article>
@@ -230,6 +239,27 @@
         <div class="job-actions"></div>
       </article>
     </template>
+
+    <section class="player-modal" id="player-modal" hidden>
+      <div class="player-backdrop" id="player-backdrop"></div>
+      <div class="player-shell panel" role="dialog" aria-modal="true" aria-labelledby="player-title">
+        <div class="player-head">
+          <div class="player-copy">
+            <div class="eyebrow">Bunker playback</div>
+            <h2 id="player-title">Loading title...</h2>
+            <p id="player-meta" class="feature-meta"></p>
+          </div>
+          <div class="player-controls">
+            <button id="player-watched-btn" class="btn btn-good" type="button">Mark Watched</button>
+            <button id="player-external-btn" class="btn btn-ghost" type="button">Open Stream</button>
+            <button id="player-close-btn" class="btn btn-ghost" type="button">Close</button>
+          </div>
+        </div>
+        <div class="player-stage">
+          <video id="player-video" controls preload="metadata" playsinline></video>
+        </div>
+      </div>
+    </section>
 
     <script src="/bunku/app.js" defer></script>
   </body>

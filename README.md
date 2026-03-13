@@ -23,7 +23,7 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Transcript + metadata intelligence pipeline with lightweight hashed embeddings
 - SQLite-backed metadata, watch history, and preferences
 - Hybrid recommendation engine (semantic + behavioral + trending) with diversity rerank
-- Bunku Mode local-first web UI (`/bunku`) with rails, queue panel, and feedback controls
+- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, queue panel, feedback controls, and inline playback
 - FastAPI media server
 - Async background workers for sync and queued downloads
 - Offline horizon planner for auto-queuing watch-ready content
@@ -119,6 +119,12 @@ bunker serve --host 0.0.0.0 --port 8080
 # open http://localhost:8080/bunku
 ```
 
+Inside Bunku, TV mode is enabled by default:
+
+- Arrow keys move focus across controls and media rails
+- `Enter` plays local titles or queues discovered items
+- `Esc` closes the inline player overlay
+
 ## API Endpoints
 
 - `GET /health`
@@ -156,6 +162,7 @@ bunker serve --host 0.0.0.0 --port 8080
 - Quick bootstrap: `deploy/raspberrypi/setup_pi.sh`
 - Pi Docker profile: `deploy/raspberrypi/docker-compose.pi.yml`
 - Use `media/nas-import` or `media/imports` as the drop folder for local/NAS ingest
+- Use the Bunku TV mode UI for keyboard/remote-first operation on HDMI-attached displays
 
 ## Deployment
 
