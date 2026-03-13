@@ -12,7 +12,7 @@ setup(
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     include_package_data=True,
-    package_data={"bunkermedia": ["ui/*.html", "ui/*.css", "ui/*.js"]},
+    package_data={"bunkermedia": ["ui/*.html", "ui/*.css", "ui/*.js", "ui/*.webmanifest", "ui/*.svg"]},
     install_requires=[
         "fastapi>=0.115.0",
         "uvicorn>=0.30.0",

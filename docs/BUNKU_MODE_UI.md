@@ -39,6 +39,7 @@ A household user should open one local URL and immediately:
 - Interests and channels
 - Intent presets: `focus`, `relax`, `learn`, `entertain`
 - Autopilot toggle for selected interests
+- Private vault profile selection and optional PIN challenge
 
 ## Background Behavior
 
@@ -66,3 +67,6 @@ When network is unavailable:
 - LAN-first, local DB by default.
 - No external telemetry by default.
 - All intent/mood features are opt-in.
+- Private-vault mode hides marked media from non-vault profiles.
+- UI should surface encrypted-storage health as an appliance status signal.
+- Sensitive content protection is based on encrypted storage plus profile/vault visibility rules, not on misleading “zero-cost compression” claims.

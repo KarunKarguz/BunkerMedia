@@ -4,6 +4,8 @@ const profileAddBtn = document.getElementById("profile-add-btn");
 const profileForm = document.getElementById("profile-form");
 const profileName = document.getElementById("profile-name");
 const profileKids = document.getElementById("profile-kids");
+const profilePrivate = document.getElementById("profile-private");
+const profilePin = document.getElementById("profile-pin");
 const kidsBadge = document.getElementById("kids-badge");
 const tvModeBtn = document.getElementById("tv-mode-btn");
 const refreshBtn = document.getElementById("refresh-btn");
@@ -41,6 +43,8 @@ const sysCpuTemp = document.getElementById("sys-cpu-temp");
 const sysCpuNote = document.getElementById("sys-cpu-note");
 const sysLoad = document.getElementById("sys-load");
 const sysLoadNote = document.getElementById("sys-load-note");
+const privacyState = document.getElementById("privacy-state");
+const privacyNote = document.getElementById("privacy-note");
 
 const rails = {
   continue: document.getElementById("rail-continue"),
@@ -70,6 +74,7 @@ let lastFocusedElement = null;
 let tvModeEnabled = localStorage.getItem(TV_MODE_KEY) !== "off";
 let currentProfileId = null;
 let deferredInstallPrompt = null;
+let profileDirectory = [];
 
 function setStatus(text, tone = "neutral") {
   statusPill.textContent = text;
@@ -110,12 +115,23 @@ function setInstallAvailability(available) {
 }
 
 function renderProfiles(activeProfile, profiles = []) {
+  profileDirectory = profiles || [];
   currentProfileId = activeProfile && activeProfile.profile_id ? activeProfile.profile_id : null;
   profileSelect.innerHTML = "";
   profiles.forEach((profile) => {
     const option = document.createElement("option");
     option.value = profile.profile_id;
-    option.textContent = profile.is_kids ? `${profile.display_name} (Kids)` : profile.display_name;
+    const labels = [profile.display_name];
+    if (profile.is_kids) {
+      labels.push("Kids");
+    }
+    if (profile.can_access_private) {
+      labels.push("Vault");
+    }
+    if (profile.pin_required) {
+      labels.push("PIN");
+    }
+    option.textContent = labels.join(" | ");
     if (profile.profile_id === currentProfileId) {
       option.selected = true;
     }
@@ -161,6 +177,11 @@ function summarizeWhy(video) {
   return `Why this: ${strong.join(" | ")}`;
 }
 
+function canManagePrivateVault() {
+  const selected = profileDirectory.find((profile) => profile.profile_id === currentProfileId);
+  return Boolean(selected && selected.can_access_private);
+}
+
 function artSeed(video) {
   const source = String(video.channel || video.title || "B");
   let total = 0;
@@ -180,6 +201,12 @@ function videoInitials(video) {
 }
 
 function chipText(video, source) {
+  if (video.privacy_level === "explicit") {
+    return "Explicit";
+  }
+  if (video.privacy_level === "private") {
+    return "Private";
+  }
   if (video.downloaded || video.local_path) {
     return "Local";
   }
@@ -412,6 +439,13 @@ function renderVideoCards(container, videos = [], source = "default") {
       why.hidden = true;
     }
 
+    if (registeredVideo.privacy_level === "private") {
+      note.textContent = `${note.textContent} Private vault item.`;
+    }
+    if (registeredVideo.privacy_level === "explicit") {
+      note.textContent = `${note.textContent} Explicit vault item.`;
+    }
+
     card.addEventListener("click", async (event) => {
       if (event.target instanceof HTMLElement && event.target.closest("button")) {
         return;
@@ -459,6 +493,26 @@ function renderVideoCards(container, videos = [], source = "default") {
       actions.appendChild(
         actionButton("Queue", "btn-ghost", async () => {
           await queueUrl(registeredVideo.source_url, "auto", 1);
+        })
+      );
+    }
+
+    if (canManagePrivateVault()) {
+      const nextPrivacy =
+        registeredVideo.privacy_level === "standard"
+          ? "private"
+          : registeredVideo.privacy_level === "private"
+            ? "explicit"
+            : "standard";
+      const label =
+        registeredVideo.privacy_level === "standard"
+          ? "Private"
+          : registeredVideo.privacy_level === "private"
+            ? "Explicit"
+            : "Normal";
+      actions.appendChild(
+        actionButton(label, "btn-ghost", async () => {
+          await setVideoPrivacy(registeredVideo.video_id, nextPrivacy);
         })
       );
     }
@@ -674,6 +728,38 @@ function renderSystem(data) {
   }
 }
 
+function renderPrivacy(data) {
+  const privacy = data.privacy || {};
+  const profile = privacy.active_profile || {};
+  const notes = privacy.notes || [];
+
+  if (!privacy.private_mode_enabled) {
+    privacyState.textContent = "Off";
+    privacyNote.textContent = "Private vault mode disabled";
+    return;
+  }
+
+  if (privacy.status === "ok") {
+    privacyState.textContent = "Ready";
+  } else if (privacy.status === "warning") {
+    privacyState.textContent = "Check";
+  } else {
+    privacyState.textContent = "Info";
+  }
+
+  const statusBits = [];
+  if (privacy.marker_present) {
+    statusBits.push("marker");
+  }
+  if (privacy.encrypted_mount_detected) {
+    statusBits.push("encrypted mount");
+  }
+  if (profile.can_access_private) {
+    statusBits.push("vault profile");
+  }
+  privacyNote.textContent = statusBits.length ? statusBits.join(" | ") : notes.join(" | ") || "No privacy hints";
+}
+
 async function loadHome() {
   setStatus("Refreshing bunker...", "warn");
   try {
@@ -683,6 +769,7 @@ async function loadHome() {
     renderFeatured(data);
     renderStats(data);
     renderSystem(data);
+    renderPrivacy(data);
     renderVideoCards(rails.continue, data.continue_watching || [], "continue");
     renderVideoCards(rails.downloaded, data.downloaded || [], "downloaded");
     renderVideoCards(rails.recommended, data.recommended || [], "recommended");
@@ -787,6 +874,15 @@ async function triggerImportsOrganize() {
   await loadHome();
 }
 
+async function setVideoPrivacy(videoId, privacyLevel) {
+  await fetchJson(`/videos/${encodeURIComponent(videoId)}/privacy`, {
+    method: "POST",
+    body: JSON.stringify({ privacy_level: privacyLevel }),
+  });
+  setStatus(`Privacy set to ${privacyLevel}`, "good");
+  await loadHome();
+}
+
 async function pauseJob(jobId) {
   await fetchJson(`/jobs/${jobId}/pause`, { method: "POST" });
   setStatus(`Paused job ${jobId}`, "good");
@@ -809,20 +905,38 @@ async function updateJobPriority(jobId, priority) {
 }
 
 async function selectProfile(profileId) {
-  await fetchJson(`/profiles/${encodeURIComponent(profileId)}/select`, { method: "POST" });
+  const profile = profileDirectory.find((item) => item.profile_id === profileId);
+  let pin = null;
+  if (profile && profile.pin_required) {
+    pin = window.prompt(`Enter PIN for ${profile.display_name}`) || "";
+    if (!pin) {
+      throw new Error("PIN required");
+    }
+  }
+  await fetchJson(`/profiles/${encodeURIComponent(profileId)}/select`, {
+    method: "POST",
+    body: JSON.stringify({ pin }),
+  });
   setStatus(`Switched to ${profileSelect.options[profileSelect.selectedIndex].text}`, "good");
   await loadHome();
 }
 
-async function createProfile(displayName, isKids) {
+async function createProfile(displayName, isKids, canAccessPrivate, pin) {
   const result = await fetchJson("/profiles", {
     method: "POST",
-    body: JSON.stringify({ display_name: displayName, is_kids: isKids }),
+    body: JSON.stringify({
+      display_name: displayName,
+      is_kids: isKids,
+      can_access_private: canAccessPrivate,
+      pin: pin || null,
+    }),
   });
   setStatus(`Created profile ${result.profile.display_name}`, "good");
   profileForm.hidden = true;
   profileName.value = "";
   profileKids.checked = false;
+  profilePrivate.checked = false;
+  profilePin.value = "";
   await loadHome();
 }
 
@@ -873,18 +987,24 @@ profileSelect.addEventListener("change", async () => {
   } catch (err) {
     console.error(err);
     setStatus("Profile switch failed", "bad");
+    await loadHome();
   }
 });
 
 profileForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const displayName = profileName.value.trim();
+  const pin = profilePin.value.trim();
   if (!displayName) {
     setStatus("Enter a profile name", "warn");
     return;
   }
+  if (pin && pin.length < 4) {
+    setStatus("PIN must be at least 4 characters", "warn");
+    return;
+  }
   try {
-    await createProfile(displayName, Boolean(profileKids.checked));
+    await createProfile(displayName, Boolean(profileKids.checked), Boolean(profilePrivate.checked), pin);
   } catch (err) {
     console.error(err);
     setStatus("Profile creation failed", "bad");

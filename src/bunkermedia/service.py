@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from bunkermedia.config import AppConfig
@@ -17,6 +18,7 @@ from bunkermedia.providers import LocalFolderProvider, ProviderRegistry, RSSProv
 from bunkermedia.recommender import RecommendationEngine
 from bunkermedia.scraper import Scraper
 from bunkermedia.storage_policy import StoragePolicyManager
+from bunkermedia.storage_privacy import StoragePrivacyMonitor
 from bunkermedia.system_monitor import SystemMonitor
 from bunkermedia.workers import WorkerManager
 
@@ -60,6 +62,12 @@ class BunkerService:
         self.offline_planner = OfflinePlanner(self.config, self.db, self.recommender, self.logger)
         self.storage_policy = StoragePolicyManager(self.config, self.db, self.logger)
         self.system_monitor = SystemMonitor(self.config.download_path, self.logger)
+        self.storage_privacy = StoragePrivacyMonitor(
+            self.config.download_path,
+            self.config.private_mode_enabled,
+            self.config.private_require_encrypted_store,
+            self.config.private_storage_marker_file,
+        )
         self.import_organizer = ImportOrganizer(
             self.library,
             self.config.import_watch_folders,
@@ -173,7 +181,14 @@ class BunkerService:
         active = self.get_active_profile()
         profile_id = str(active.get("profile_id") or self.db.DEFAULT_PROFILE_ID)
         is_kids = bool(active.get("is_kids"))
-        return await self.recommender.recommend(limit=limit, explain=explain, profile_id=profile_id, is_kids=is_kids)
+        can_access_private = bool(active.get("can_access_private"))
+        return await self.recommender.recommend(
+            limit=limit,
+            explain=explain,
+            profile_id=profile_id,
+            is_kids=is_kids,
+            can_access_private=can_access_private,
+        )
 
     def list_download_jobs(self, status: str | None = None, limit: int = 100):
         return self.db.list_download_jobs(status=status, limit=limit)
@@ -256,7 +271,7 @@ class BunkerService:
                 self.db.set_preference("channel", channel_name, weight=weight, profile_id=str(profile["profile_id"]))
 
     def get_stream_path(self, video_id: str) -> Path | None:
-        video = self.db.get_video(video_id)
+        video = self.get_video(video_id)
         if not video:
             return None
         local_path = video.get("local_path")
@@ -287,39 +302,105 @@ class BunkerService:
 
     def get_offline_inventory(self) -> dict[str, int]:
         active = self.get_active_profile()
-        return self.db.get_offline_inventory_stats(profile_id=str(active["profile_id"]))
+        rows = self.db.list_videos(limit=5000, search=None, profile_id=str(active["profile_id"]))
+        visible = [row for row in rows if self._video_allowed_for_profile(row, active) and int(row.get("downloaded") or 0) == 1]
+        return {
+            "total_downloaded_items": len(visible),
+            "private_items": sum(
+                1 for row in visible if str(row.get("privacy_level") or "standard") in {"private", "explicit"}
+            ),
+            "unwatched_duration_seconds": sum(
+                int(row.get("duration_seconds") or 0) for row in visible if int(row.get("watched") or 0) == 0
+            ),
+            "downloaded_storage_bytes": sum(int(row.get("file_size_bytes") or 0) for row in visible),
+        }
 
     def list_profiles(self) -> list[dict[str, object]]:
-        return self.db.list_profiles()
+        return [self._public_profile(profile) for profile in self.db.list_profiles()]
 
     def get_active_profile(self) -> dict[str, object]:
         profile = self.db.get_profile(self.db.get_active_profile_id())
         if profile:
-            return profile
+            return self._public_profile(profile)
         fallback = self.db.set_active_profile(self.db.DEFAULT_PROFILE_ID)
-        return fallback or {
+        return self._public_profile(fallback or {
             "profile_id": self.db.DEFAULT_PROFILE_ID,
             "display_name": "Default",
             "is_kids": False,
+            "can_access_private": False,
+            "pin_required": False,
             "avatar_color": "#d8b56a",
-        }
+        })
 
-    def create_profile(self, display_name: str, is_kids: bool = False) -> dict[str, object]:
-        return self.db.create_profile(display_name=display_name, is_kids=is_kids)
+    def create_profile(
+        self,
+        display_name: str,
+        is_kids: bool = False,
+        can_access_private: bool = False,
+        pin: str | None = None,
+    ) -> dict[str, object]:
+        profile = self.db.create_profile(
+            display_name=display_name,
+            is_kids=is_kids,
+            can_access_private=can_access_private,
+            pin_hash=self._hash_pin(pin) if pin else None,
+        )
+        return self._public_profile(profile)
 
     def update_profile(
         self,
         profile_id: str,
         display_name: str | None = None,
         is_kids: bool | None = None,
+        can_access_private: bool | None = None,
+        pin: str | None = None,
+        clear_pin: bool = False,
     ) -> dict[str, object] | None:
-        return self.db.update_profile(profile_id=profile_id, display_name=display_name, is_kids=is_kids)
+        pin_hash: str | None = None
+        if clear_pin:
+            pin_hash = ""
+        elif pin:
+            pin_hash = self._hash_pin(pin)
+        profile = self.db.update_profile(
+            profile_id=profile_id,
+            display_name=display_name,
+            is_kids=is_kids,
+            can_access_private=can_access_private,
+            pin_hash=pin_hash,
+        )
+        return self._public_profile(profile) if profile else None
 
-    def select_profile(self, profile_id: str) -> dict[str, object] | None:
-        return self.db.set_active_profile(profile_id)
+    def select_profile(self, profile_id: str, pin: str | None = None) -> dict[str, object] | None:
+        profile = self.db.get_profile(profile_id)
+        if not profile:
+            return None
+        expected_hash = str(profile.get("pin_hash") or "")
+        if expected_hash:
+            if not pin or self._hash_pin(pin) != expected_hash:
+                return None
+        selected = self.db.set_active_profile(profile_id)
+        return self._public_profile(selected) if selected else None
 
     def get_system_state(self) -> dict[str, object]:
         return self.system_monitor.snapshot()
+
+    def get_privacy_state(self) -> dict[str, object]:
+        active = self.get_active_profile()
+        snapshot = self.storage_privacy.snapshot()
+        snapshot["active_profile"] = {
+            "profile_id": active.get("profile_id"),
+            "display_name": active.get("display_name"),
+            "can_access_private": active.get("can_access_private", False),
+            "pin_required": active.get("pin_required", False),
+        }
+        snapshot["private_items_visible"] = bool(active.get("can_access_private"))
+        return snapshot
+
+    def set_video_privacy(self, video_id: str, privacy_level: str) -> bool:
+        active = self.get_active_profile()
+        if not bool(active.get("can_access_private")):
+            return False
+        return self.db.set_video_privacy(video_id, privacy_level)
 
     def organize_imports(self) -> dict[str, object]:
         return self.import_organizer.organize_once()
@@ -333,6 +414,7 @@ class BunkerService:
             "providers": self.list_providers(),
             "offline_inventory": self.get_offline_inventory(),
             "active_profile": self.get_active_profile(),
+            "privacy": self.get_privacy_state(),
             "system": self.get_system_state(),
         }
 
@@ -368,6 +450,11 @@ class BunkerService:
         return self.db.list_schema_migrations()
 
     def _video_allowed_for_profile(self, video: dict[str, object], profile: dict[str, object]) -> bool:
+        privacy_level = str(video.get("privacy_level") or "standard").lower()
+        if privacy_level in {"private", "explicit"} and not bool(profile.get("can_access_private")):
+            return False
+        if bool(profile.get("is_kids")) and privacy_level == "explicit":
+            return False
         if not bool(profile.get("is_kids")):
             return True
         text = " ".join(
@@ -379,3 +466,16 @@ class BunkerService:
             ]
         ).lower()
         return not any(keyword in text for keyword in self.KIDS_BLOCK_KEYWORDS)
+
+    def _hash_pin(self, pin: str) -> str:
+        salt = str(self.config.database_path).encode("utf-8")
+        derived = hashlib.pbkdf2_hmac("sha256", pin.strip().encode("utf-8"), salt, 120000)
+        return derived.hex()
+
+    @staticmethod
+    def _public_profile(profile: dict[str, object] | None) -> dict[str, object]:
+        if not profile:
+            return {}
+        payload = dict(profile)
+        payload.pop("pin_hash", None)
+        return payload

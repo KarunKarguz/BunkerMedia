@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +61,7 @@ def _ordered_migrations() -> list[Migration]:
         Migration(3, "download_next_run_index", _migration_next_run_index),
         Migration(4, "video_duration_and_file_size", _migration_video_duration_file_size),
         Migration(5, "profiles_and_profile_state", _migration_profiles_and_profile_state),
+        Migration(6, "privacy_vault_support", _migration_privacy_vault_support),
     ]
 
 
@@ -204,6 +205,15 @@ def _migration_profiles_and_profile_state(conn: "sqlite3.Connection") -> None:
         """,
         (fallback_now,),
     )
+
+
+def _migration_privacy_vault_support(conn: "sqlite3.Connection") -> None:
+    _add_column_if_missing(conn, "videos", "privacy_level", "TEXT DEFAULT 'standard'")
+    conn.execute("UPDATE videos SET privacy_level='standard' WHERE privacy_level IS NULL OR privacy_level=''")
+    _add_column_if_missing(conn, "profiles", "can_access_private", "INTEGER DEFAULT 0")
+    _add_column_if_missing(conn, "profiles", "pin_hash", "TEXT")
+    conn.execute("UPDATE profiles SET can_access_private=0 WHERE can_access_private IS NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_privacy_level ON videos(privacy_level)")
 
 
 def _add_column_if_missing(conn: "sqlite3.Connection", table: str, column: str, column_spec: str) -> None:

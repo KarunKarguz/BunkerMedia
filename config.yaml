@@ -47,3 +47,6 @@ storage_reserve_gb: 1
 storage_eviction_policy: watched_oldest
 storage_protect_liked: true
 storage_eviction_batch_size: 25
+private_mode_enabled: false
+private_require_encrypted_store: false
+private_storage_marker_file: .bunkermedia-private-store

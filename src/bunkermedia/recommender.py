@@ -42,8 +42,15 @@ class RecommendationEngine:
         explain: bool = False,
         profile_id: str = Database.DEFAULT_PROFILE_ID,
         is_kids: bool = False,
+        can_access_private: bool = True,
     ) -> list[Recommendation]:
-        return self._recommend_sync(limit, explain, profile_id=profile_id, is_kids=is_kids)
+        return self._recommend_sync(
+            limit,
+            explain,
+            profile_id=profile_id,
+            is_kids=is_kids,
+            can_access_private=can_access_private,
+        )
 
     def _refresh_scores_sync(self, profile_id: str = Database.DEFAULT_PROFILE_ID) -> None:
         prefs = self.db.get_preferences("channel", profile_id=profile_id)
@@ -58,7 +65,14 @@ class RecommendationEngine:
 
         self.logger.info("Recommendation features refreshed count=%d", len(candidates))
 
-    def _recommend_sync(self, limit: int, explain: bool, profile_id: str, is_kids: bool) -> list[Recommendation]:
+    def _recommend_sync(
+        self,
+        limit: int,
+        explain: bool,
+        profile_id: str,
+        is_kids: bool,
+        can_access_private: bool,
+    ) -> list[Recommendation]:
         limit = max(1, limit)
         prefs = self.db.get_preferences("channel", profile_id=profile_id)
         watch_signal = self.db.fetch_history_signal(profile_id=profile_id)
@@ -67,6 +81,9 @@ class RecommendationEngine:
 
         scored: list[dict[str, Any]] = []
         for item in candidates:
+            privacy_level = str(item.get("privacy_level") or "standard").lower()
+            if privacy_level in {"private", "explicit"} and not can_access_private:
+                continue
             if is_kids and not self._is_kids_safe(item):
                 continue
             video_id = str(item["video_id"])

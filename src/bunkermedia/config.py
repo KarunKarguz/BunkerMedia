@@ -67,6 +67,9 @@ class AppConfig:
     storage_eviction_policy: str = "watched_oldest"
     storage_protect_liked: bool = True
     storage_eviction_batch_size: int = 25
+    private_mode_enabled: bool = False
+    private_require_encrypted_store: bool = False
+    private_storage_marker_file: str = ".bunkermedia-private-store"
 
     @property
     def logs_dir(self) -> Path:
@@ -128,6 +131,10 @@ class AppConfig:
             storage_eviction_policy=str(raw.get("storage_eviction_policy", "watched_oldest")).strip().lower(),
             storage_protect_liked=bool(raw.get("storage_protect_liked", True)),
             storage_eviction_batch_size=int(raw.get("storage_eviction_batch_size", 25)),
+            private_mode_enabled=bool(raw.get("private_mode_enabled", False)),
+            private_require_encrypted_store=bool(raw.get("private_require_encrypted_store", False)),
+            private_storage_marker_file=str(raw.get("private_storage_marker_file", ".bunkermedia-private-store")).strip()
+            or ".bunkermedia-private-store",
         )
 
     @staticmethod

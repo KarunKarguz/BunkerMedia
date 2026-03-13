@@ -8,6 +8,8 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Contributing guide: `CONTRIBUTING.md`
 - Security policy: `SECURITY.md`
 - Architecture notes: `docs/ARCHITECTURE.md`
+- Product requirements: `docs/SRS.md`
+- System design spec: `docs/SDS.md`
 - Governance and support policy: `docs/GOVERNANCE.md`
 - Bunku Mode UI spec: `docs/BUNKU_MODE_UI.md`
 - Operations guide: `docs/OPERATIONS.md`
@@ -24,6 +26,7 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - SQLite-backed metadata, watch history, and preferences
 - Hybrid recommendation engine (semantic + behavioral + trending) with diversity rerank
 - Multi-user profiles with active-profile switching and kids-safe mode
+- Private-vault mode with encrypted-storage health checks, profile PINs, and hidden private media
 - Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, queue panel, recommendation reasoning, feedback controls, inline playback, and installable app-shell behavior
 - FastAPI media server
 - Async background workers for sync and queued downloads
@@ -87,6 +90,9 @@ Edit `config.yaml`:
 - `storage_eviction_policy` (`watched_oldest` or `low_score`)
 - `storage_protect_liked`
 - `storage_eviction_batch_size`
+- `private_mode_enabled`
+- `private_require_encrypted_store`
+- `private_storage_marker_file`
 - `rss_feeds`
 - `local_watch_folders`
 
@@ -126,6 +132,7 @@ Inside Bunku, TV mode is enabled by default:
 - `Enter` plays local titles or queues discovered items
 - `Esc` closes the inline player overlay
 - Profiles can be switched from the top bar, including kids-safe profiles
+- Private-vault profiles can require a PIN and hide marked media from normal profiles
 - Queue rows support pause/resume and priority tuning directly from the UI
 - On supported browsers, `Install App` pins Bunku to a phone/tablet/TV home screen
 
@@ -135,6 +142,7 @@ Inside Bunku, TV mode is enabled by default:
 - `GET /metrics`
 - `GET /schema`
 - `GET /system`
+- `GET /privacy`
 - `GET /bunku/manifest.webmanifest`
 - `GET /bunku/sw.js`
 - `GET /bunku/icon.svg`
@@ -165,6 +173,7 @@ Inside Bunku, TV mode is enabled by default:
 - `GET /recommendations?limit=20&explain=true`
 - `GET /stream/{video_id}`
 - `POST /videos/{video_id}/watched`
+- `POST /videos/{video_id}/privacy`
 
 ## Notes for Raspberry Pi
 
@@ -177,6 +186,18 @@ Inside Bunku, TV mode is enabled by default:
 - Pi Docker profile: `deploy/raspberrypi/docker-compose.pi.yml`
 - Use `media/nas-import` or `media/imports` as the drop folder for local/NAS ingest
 - Use the Bunku TV mode UI for keyboard/remote-first operation on HDMI-attached displays
+- For private mode, put `download_path` on an encrypted volume where possible and add the configured marker file if mount heuristics cannot confirm encryption
+
+## Private Mode
+
+- BunkerMedia does not claim transparent “smaller and identical quality” compression for downloaded video.
+- Private mode is built around encrypted storage verification plus app-level private media visibility controls.
+- Mark sensitive items as `private` or `explicit` from a vault-capable profile.
+- Normal profiles will not see those items in rails, search, recommendations, or stream endpoints.
+- For best results, enable:
+  - `private_mode_enabled: true`
+  - `private_require_encrypted_store: true`
+  - store media on LUKS/fscrypt/gocryptfs/cryfs or add the configured marker file on the verified encrypted store
 
 ## Deployment
 

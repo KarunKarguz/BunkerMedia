@@ -193,6 +193,7 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("/schema", paths)
             self.assertIn("/metrics", paths)
             self.assertIn("/system", paths)
+            self.assertIn("/privacy", paths)
             self.assertIn("/bunku/manifest.webmanifest", paths)
             self.assertIn("/bunku/sw.js", paths)
             self.assertIn("/bunku/icon.svg", paths)
@@ -232,6 +233,10 @@ class IntegrationTests(unittest.TestCase):
                         self.assertEqual(system.status_code, 200)
                         self.assertIn("platform", system.json())
 
+                        privacy = await client.get("/privacy")
+                        self.assertEqual(privacy.status_code, 200)
+                        self.assertIn("status", privacy.json())
+
                         planned = await client.post("/offline/plan")
                         self.assertEqual(planned.status_code, 200)
                         self.assertIn("status", planned.json())
@@ -262,12 +267,16 @@ class IntegrationTests(unittest.TestCase):
 
                         created_profile = await client.post(
                             "/profiles",
-                            json={"display_name": "Family", "is_kids": False},
+                            json={"display_name": "Family", "is_kids": False, "can_access_private": True, "pin": "2468"},
                         )
                         self.assertEqual(created_profile.status_code, 200)
                         profile_id = created_profile.json()["profile"]["profile_id"]
+                        self.assertTrue(created_profile.json()["profile"]["pin_required"])
 
-                        selected = await client.post(f"/profiles/{profile_id}/select")
+                        denied = await client.post(f"/profiles/{profile_id}/select", json={"pin": "0000"})
+                        self.assertEqual(denied.status_code, 403)
+
+                        selected = await client.post(f"/profiles/{profile_id}/select", json={"pin": "2468"})
                         self.assertEqual(selected.status_code, 200)
                         self.assertEqual(selected.json()["profile"]["profile_id"], profile_id)
 
@@ -361,11 +370,11 @@ class IntegrationTests(unittest.TestCase):
 
                         created_profile = await client.post(
                             "/profiles",
-                            json={"display_name": "Kids Room", "is_kids": True},
+                            json={"display_name": "Vault Room", "is_kids": False, "can_access_private": True},
                         )
                         self.assertEqual(created_profile.status_code, 200)
                         profile_id = created_profile.json()["profile"]["profile_id"]
-                        selected = await client.post(f"/profiles/{profile_id}/select")
+                        selected = await client.post(f"/profiles/{profile_id}/select", json={})
                         self.assertEqual(selected.status_code, 200)
 
                         await service.workers.process_download_queue_once()
@@ -378,6 +387,12 @@ class IntegrationTests(unittest.TestCase):
                         self.assertEqual(videos.status_code, 200)
                         self.assertGreaterEqual(len(videos.json()), 1)
 
+                        protected = await client.post(
+                            "/videos/mockvid123/privacy",
+                            json={"privacy_level": "private"},
+                        )
+                        self.assertEqual(protected.status_code, 200)
+
                         watched = await client.post(
                             "/videos/mockvid123/watched",
                             json={"watch_seconds": 120, "completed": True, "liked": True},
@@ -387,6 +402,12 @@ class IntegrationTests(unittest.TestCase):
                         recs = await client.get("/recommendations", params={"limit": 5, "explain": "true"})
                         self.assertEqual(recs.status_code, 200)
                         self.assertGreaterEqual(len(recs.json()), 1)
+
+                        default_profile = await client.post("/profiles/default/select", json={})
+                        self.assertEqual(default_profile.status_code, 200)
+                        hidden = await client.get("/videos", params={"search": "Mock", "limit": 10})
+                        self.assertEqual(hidden.status_code, 200)
+                        self.assertEqual(len(hidden.json()), 0)
 
             asyncio.run(_exercise_flow())
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from bunkermedia.migrations import apply_migrations, get_schema_version, list_migrations
-from bunkermedia.models import UserProfile, VideoMetadata
+from bunkermedia.models import VideoMetadata
 
 
 class Database:
@@ -44,6 +44,7 @@ class Database:
                     disliked INTEGER DEFAULT 0,
                     rating REAL DEFAULT 0,
                     rejected_reason TEXT,
+                    privacy_level TEXT DEFAULT 'standard',
                     trending_score REAL DEFAULT 0,
                     channel_preference REAL DEFAULT 0,
                     watch_score REAL DEFAULT 0,
@@ -53,6 +54,7 @@ class Database:
 
                 CREATE TABLE IF NOT EXISTS watch_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_id TEXT DEFAULT 'default',
                     video_id TEXT NOT NULL,
                     watched_at TEXT NOT NULL,
                     watch_seconds INTEGER DEFAULT 0,
@@ -110,16 +112,19 @@ class Database:
 
     def _ensure_profile_defaults(self) -> None:
         now = self._utc_now()
-        for profile_id, display_name, is_kids, color in [
-            ("default", "Default", 0, "#d8b56a"),
-            ("kids", "Kids", 1, "#63d79a"),
+        for profile_id, display_name, is_kids, color, can_access_private in [
+            ("default", "Default", 0, "#d8b56a", 0),
+            ("kids", "Kids", 1, "#63d79a", 0),
+            ("vault", "Vault", 0, "#f0cf84", 1),
         ]:
             self.conn.execute(
                 """
-                INSERT OR IGNORE INTO profiles (profile_id, display_name, is_kids, avatar_color, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT OR IGNORE INTO profiles (
+                    profile_id, display_name, is_kids, avatar_color, can_access_private, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (profile_id, display_name, is_kids, color, now, now),
+                (profile_id, display_name, is_kids, color, can_access_private, now, now),
             )
 
     def list_profiles(self) -> list[dict[str, Any]]:
@@ -132,13 +137,17 @@ class Database:
                     p.display_name,
                     p.is_kids,
                     p.avatar_color,
+                    p.can_access_private,
+                    p.pin_hash,
                     p.created_at,
                     p.updated_at,
                     COALESCE(COUNT(ps.video_id), 0) AS touched_items,
                     COALESCE(SUM(CASE WHEN ps.watched=1 THEN 1 ELSE 0 END), 0) AS watched_items
                 FROM profiles p
                 LEFT JOIN profile_video_state ps ON ps.profile_id=p.profile_id
-                GROUP BY p.profile_id, p.display_name, p.is_kids, p.avatar_color, p.created_at, p.updated_at
+                GROUP BY
+                    p.profile_id, p.display_name, p.is_kids, p.avatar_color,
+                    p.can_access_private, p.pin_hash, p.created_at, p.updated_at
                 ORDER BY p.created_at ASC, p.profile_id ASC
                 """
             ).fetchall()
@@ -148,6 +157,8 @@ class Database:
                 "display_name": str(row["display_name"]),
                 "is_kids": bool(row["is_kids"]),
                 "avatar_color": str(row["avatar_color"] or "#d8b56a"),
+                "can_access_private": bool(row["can_access_private"]),
+                "pin_required": bool(row["pin_hash"]),
                 "created_at": str(row["created_at"]),
                 "updated_at": str(row["updated_at"]),
                 "touched_items": int(row["touched_items"] or 0),
@@ -164,7 +175,7 @@ class Database:
         with self._lock:
             row = self.conn.execute(
                 """
-                SELECT profile_id, display_name, is_kids, avatar_color, created_at, updated_at
+                SELECT profile_id, display_name, is_kids, avatar_color, can_access_private, pin_hash, created_at, updated_at
                 FROM profiles
                 WHERE profile_id=?
                 """,
@@ -177,11 +188,20 @@ class Database:
             "display_name": str(row["display_name"]),
             "is_kids": bool(row["is_kids"]),
             "avatar_color": str(row["avatar_color"] or "#d8b56a"),
+            "can_access_private": bool(row["can_access_private"]),
+            "pin_required": bool(row["pin_hash"]),
+            "pin_hash": str(row["pin_hash"]) if row["pin_hash"] else None,
             "created_at": str(row["created_at"]),
             "updated_at": str(row["updated_at"]),
         }
 
-    def create_profile(self, display_name: str, is_kids: bool = False) -> dict[str, Any]:
+    def create_profile(
+        self,
+        display_name: str,
+        is_kids: bool = False,
+        can_access_private: bool = False,
+        pin_hash: str | None = None,
+    ) -> dict[str, Any]:
         now = self._utc_now()
         base_slug = self._slugify_profile_id(display_name) or f"profile-{int(datetime.now().timestamp())}"
         profile_id = base_slug
@@ -193,10 +213,21 @@ class Database:
             color = "#63d79a" if is_kids else "#d8b56a"
             self.conn.execute(
                 """
-                INSERT INTO profiles (profile_id, display_name, is_kids, avatar_color, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO profiles (
+                    profile_id, display_name, is_kids, avatar_color, can_access_private, pin_hash, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (profile_id, display_name.strip(), int(is_kids), color, now, now),
+                (
+                    profile_id,
+                    display_name.strip(),
+                    int(is_kids),
+                    color,
+                    int(bool(can_access_private)),
+                    pin_hash,
+                    now,
+                    now,
+                ),
             )
             self.conn.commit()
         return self.get_profile(profile_id) or {}
@@ -206,6 +237,8 @@ class Database:
         profile_id: str,
         display_name: str | None = None,
         is_kids: bool | None = None,
+        can_access_private: bool | None = None,
+        pin_hash: str | None = None,
     ) -> dict[str, Any] | None:
         normalized = (profile_id or "").strip().lower()
         current = self.get_profile(normalized)
@@ -213,15 +246,27 @@ class Database:
             return None
         updated_name = display_name.strip() if display_name and display_name.strip() else current["display_name"]
         updated_is_kids = int(current["is_kids"] if is_kids is None else bool(is_kids))
+        updated_private_access = int(
+            current["can_access_private"] if can_access_private is None else bool(can_access_private)
+        )
         updated_color = "#63d79a" if updated_is_kids else str(current["avatar_color"] or "#d8b56a")
+        updated_pin_hash = current.get("pin_hash") if pin_hash is None else pin_hash
         with self._lock:
             self.conn.execute(
                 """
                 UPDATE profiles
-                SET display_name=?, is_kids=?, avatar_color=?, updated_at=?
+                SET display_name=?, is_kids=?, avatar_color=?, can_access_private=?, pin_hash=?, updated_at=?
                 WHERE profile_id=?
                 """,
-                (updated_name, updated_is_kids, updated_color, self._utc_now(), normalized),
+                (
+                    updated_name,
+                    updated_is_kids,
+                    updated_color,
+                    updated_private_access,
+                    updated_pin_hash,
+                    self._utc_now(),
+                    normalized,
+                ),
             )
             self.conn.commit()
         return self.get_profile(normalized)
@@ -245,6 +290,22 @@ class Database:
             return None
         self.set_preference("system", "active_profile", pref_value=str(profile["profile_id"]), weight=1.0)
         return self.get_profile(str(profile["profile_id"]))
+
+    def set_video_privacy(self, video_id: str, privacy_level: str) -> bool:
+        normalized = (privacy_level or "standard").strip().lower()
+        if normalized not in {"standard", "private", "explicit"}:
+            normalized = "standard"
+        with self._lock:
+            cursor = self.conn.execute(
+                """
+                UPDATE videos
+                SET privacy_level=?, updated_at=?
+                WHERE video_id=?
+                """,
+                (normalized, self._utc_now(), video_id),
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
 
     @staticmethod
     def _slugify_profile_id(value: str) -> str:
@@ -682,6 +743,7 @@ class Database:
                    CASE WHEN ?=1 THEN COALESCE(ps.disliked, v.disliked) ELSE COALESCE(ps.disliked, 0) END AS disliked,
                    CASE WHEN ?=1 THEN COALESCE(ps.rating, v.rating) ELSE COALESCE(ps.rating, 0) END AS rating,
                    CASE WHEN ?=1 THEN COALESCE(ps.rejected_reason, v.rejected_reason) ELSE ps.rejected_reason END AS rejected_reason,
+                   v.privacy_level,
                    v.trending_score,
                    v.channel_preference, v.watch_score, v.source_url, v.updated_at,
                    COALESCE(i.transcript_source, 'none') AS transcript_source,
@@ -724,6 +786,7 @@ class Database:
                        CASE WHEN ?=1 THEN COALESCE(ps.disliked, v.disliked) ELSE COALESCE(ps.disliked, 0) END AS disliked,
                        CASE WHEN ?=1 THEN COALESCE(ps.rating, v.rating) ELSE COALESCE(ps.rating, 0) END AS rating,
                        CASE WHEN ?=1 THEN COALESCE(ps.rejected_reason, v.rejected_reason) ELSE ps.rejected_reason END AS rejected_reason,
+                       v.privacy_level,
                        v.trending_score,
                        v.channel_preference, v.watch_score, v.source_url,
                        COALESCE(i.transcript_source, 'none') AS transcript_source,
@@ -935,6 +998,7 @@ class Database:
                     v.local_path,
                     v.duration_seconds,
                     v.file_size_bytes,
+                    v.privacy_level,
                     v.trending_score,
                     CASE WHEN ?=1 THEN COALESCE(ps.liked, v.liked) ELSE COALESCE(ps.liked, 0) END AS liked,
                     CASE WHEN ?=1 THEN COALESCE(ps.disliked, v.disliked) ELSE COALESCE(ps.disliked, 0) END AS disliked,
@@ -983,6 +1047,10 @@ class Database:
                 SELECT
                     COUNT(*) AS total_downloaded_items,
                     COALESCE(
+                        SUM(CASE WHEN COALESCE(videos.privacy_level, 'standard') IN ('private', 'explicit') THEN 1 ELSE 0 END),
+                        0
+                    ) AS private_items,
+                    COALESCE(
                         SUM(
                             CASE
                                 WHEN
@@ -1004,11 +1072,13 @@ class Database:
         if not row:
             return {
                 "total_downloaded_items": 0,
+                "private_items": 0,
                 "unwatched_duration_seconds": 0,
                 "downloaded_storage_bytes": 0,
             }
         return {
             "total_downloaded_items": int(row["total_downloaded_items"] or 0),
+            "private_items": int(row["private_items"] or 0),
             "unwatched_duration_seconds": int(row["unwatched_duration_seconds"] or 0),
             "downloaded_storage_bytes": int(row["downloaded_storage_bytes"] or 0),
         }

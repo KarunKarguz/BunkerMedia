@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.4] - 2026-03-13
+
+### Added
+
+- Private-vault mode with encrypted-storage health reporting and a dedicated `/privacy` API endpoint.
+- Profile PIN support and vault-capable profiles for controlled access to private media.
+- Video privacy controls (`standard`, `private`, `explicit`) with filtering across rails, search, recommendations, and streaming.
+- Product requirements and design documentation (`docs/SRS.md`, `docs/SDS.md`).
+
+### Changed
+
+- Private media is now hidden from non-vault profiles by default.
+- Bunku exposes privacy state and vault controls in the UI.
+- Operations documentation now treats encrypted storage as the primary at-rest privacy mechanism rather than app-side compression claims.
+
 ## [0.2.3] - 2026-03-13
 
 ### Added

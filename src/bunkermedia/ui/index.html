@@ -40,6 +40,11 @@
               <input id="profile-kids" type="checkbox" />
               <span>Kids Safe</span>
             </label>
+            <label class="checkbox-pill">
+              <input id="profile-private" type="checkbox" />
+              <span>Private Vault</span>
+            </label>
+            <input id="profile-pin" type="password" maxlength="32" placeholder="Optional PIN (4+ digits)" />
             <button class="btn btn-primary" type="submit">Create</button>
           </form>
         </div>
@@ -183,6 +188,11 @@
             <span class="appliance-label">System Load</span>
             <strong class="appliance-value" id="sys-load">--</strong>
             <span class="appliance-note" id="sys-load-note">Waiting for load average</span>
+          </article>
+          <article class="appliance-card">
+            <span class="appliance-label">Privacy Vault</span>
+            <strong class="appliance-value" id="privacy-state">--</strong>
+            <span class="appliance-note" id="privacy-note">Waiting for private storage state</span>
           </article>
         </div>
       </section>

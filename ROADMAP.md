@@ -36,12 +36,13 @@ No built-in piracy-focused workflows will be added.
 - Raspberry Pi deployment preset and bootstrap assets.
 - NAS/local import organization and managed library ingest.
 - TV-mode Bunku UI with keyboard/D-pad navigation and inline playback.
+- Private-vault mode with encrypted-storage health detection and PIN-protected profiles.
 
 ### Key Gaps to "Complete Home Media Server"
 
 - Multi-provider ingestion plugin architecture.
 - Deeper Bunku controls (filters, recommendation reasoning, queue prioritization).
-- Multi-user profile and parental mode support.
+- Multi-user profile and parental mode support beyond the current private-vault baseline.
 - More robust recommendation feedback loops and autopilot policies.
 - Full observability, backups, and upgrade tooling.
 
@@ -105,6 +106,7 @@ Deliver a local "Bunker Mode Netflix" interface for family-friendly usage.
 - [x] Queue controls: Prioritize and Pause/Resume.
 - [x] Profile switcher with kids mode.
 - [x] Installable mobile/TV app shell (manifest + service worker).
+- [x] Private-vault controls with profile PIN support and encrypted-storage health.
 - [ ] Queue controls: Clear Failed.
 
 ### Exit Criteria
@@ -179,5 +181,5 @@ Production-grade open-source release for broad self-hosting.
 
 1. Add resumable background download batches and partial-recovery logic.
 2. Add Bunku Mode filters and dead-letter cleanup actions.
-3. Add optional authentication layer for non-LAN exposure.
+3. Harden private-vault workflows with profile PIN rotation and explicit allow/block controls.
 4. Add community provider adapter registry and validation policy.

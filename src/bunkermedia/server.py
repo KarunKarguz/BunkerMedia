@@ -51,11 +51,24 @@ class JobPriorityPayload(BaseModel):
 class ProfileCreatePayload(BaseModel):
     display_name: str = Field(min_length=1, max_length=48)
     is_kids: bool = False
+    can_access_private: bool = False
+    pin: str | None = Field(default=None, min_length=4, max_length=32)
 
 
 class ProfileUpdatePayload(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=48)
     is_kids: bool | None = None
+    can_access_private: bool | None = None
+    pin: str | None = Field(default=None, min_length=4, max_length=32)
+    clear_pin: bool = False
+
+
+class ProfileSelectPayload(BaseModel):
+    pin: str | None = Field(default=None, min_length=4, max_length=32)
+
+
+class VideoPrivacyPayload(BaseModel):
+    privacy_level: str = Field(default="standard", pattern="^(standard|private|explicit)$")
 
 
 def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
@@ -161,6 +174,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
                     "local_path": rec.local_path,
                     "source_url": existing.get("source_url"),
                     "upload_date": existing.get("upload_date"),
+                    "privacy_level": existing.get("privacy_level") or "standard",
                     "explanation": rec.explanation,
                 }
             )
@@ -177,6 +191,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             "offline_mode": not service.network.is_online,
             "offline_inventory": service.get_offline_inventory(),
             "system": service.get_system_state(),
+            "privacy": service.get_privacy_state(),
             "active_profile": active_profile,
             "profiles": service.list_profiles(),
         }
@@ -201,6 +216,10 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     @app.get("/system")
     async def system_state():
         return service.get_system_state()
+
+    @app.get("/privacy")
+    async def privacy_state():
+        return service.get_privacy_state()
 
     @app.post("/offline/plan")
     async def offline_plan():
@@ -278,21 +297,33 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
 
     @app.post("/profiles")
     async def create_profile(payload: ProfileCreatePayload):
-        profile = service.create_profile(display_name=payload.display_name, is_kids=payload.is_kids)
+        profile = service.create_profile(
+            display_name=payload.display_name,
+            is_kids=payload.is_kids,
+            can_access_private=payload.can_access_private,
+            pin=payload.pin,
+        )
         return {"status": "created", "profile": profile}
 
     @app.patch("/profiles/{profile_id}")
     async def update_profile(profile_id: str, payload: ProfileUpdatePayload):
-        profile = service.update_profile(profile_id, display_name=payload.display_name, is_kids=payload.is_kids)
+        profile = service.update_profile(
+            profile_id,
+            display_name=payload.display_name,
+            is_kids=payload.is_kids,
+            can_access_private=payload.can_access_private,
+            pin=payload.pin,
+            clear_pin=payload.clear_pin,
+        )
         if not profile:
             raise HTTPException(status_code=404, detail="Profile not found")
         return {"status": "updated", "profile": profile}
 
     @app.post("/profiles/{profile_id}/select")
-    async def select_profile(profile_id: str):
-        profile = service.select_profile(profile_id)
+    async def select_profile(profile_id: str, payload: ProfileSelectPayload | None = None):
+        profile = service.select_profile(profile_id, pin=(payload.pin if payload else None))
         if not profile:
-            raise HTTPException(status_code=404, detail="Profile not found")
+            raise HTTPException(status_code=403, detail="Profile not found or PIN invalid")
         return {"status": "selected", "profile": profile}
 
     @app.get("/discover")
@@ -365,6 +396,12 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         service.mark_watched(video_id=video_id, **payload.model_dump())
         return {"status": "updated", "video_id": video_id}
 
+    @app.post("/videos/{video_id}/privacy")
+    async def set_video_privacy(video_id: str, payload: VideoPrivacyPayload):
+        if not service.set_video_privacy(video_id, payload.privacy_level):
+            raise HTTPException(status_code=403, detail="Video not found or private access denied")
+        return {"status": "updated", "video_id": video_id, "privacy_level": payload.privacy_level}
+
     @app.get("/stream/{video_id}")
     async def stream_video(video_id: str):
         video_path = service.get_stream_path(video_id)
@@ -385,4 +422,5 @@ def _serialize_video(item: dict[str, Any]) -> dict[str, Any]:
         "downloaded": bool(item.get("downloaded")),
         "source_url": item.get("source_url"),
         "watched": bool(item.get("watched")),
+        "privacy_level": item.get("privacy_level") or "standard",
     }

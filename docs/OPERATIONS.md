@@ -13,6 +13,7 @@ curl -s http://localhost:8080/health
 curl -s http://localhost:8080/metrics | head
 curl -s http://localhost:8080/schema
 curl -s http://localhost:8080/system
+curl -s http://localhost:8080/privacy
 ```
 
 ## Logging
@@ -58,6 +59,9 @@ Use these config keys:
 - `offline_planner_batch_size`
 - `storage_max_gb`
 - `storage_eviction_policy`
+- `private_mode_enabled`
+- `private_require_encrypted_store`
+- `private_storage_marker_file`
 - `import_watch_folders`
 - `auto_organize_imports`
 - `import_move_mode`
@@ -107,6 +111,29 @@ Files are auto-classified into:
 - `media/library/audio/<collection>/`
 
 Organized folders are included in local discovery, so imported files appear in Bunku after refresh/sync.
+
+## Private Vault Mode
+
+Recommended config:
+
+```yaml
+private_mode_enabled: true
+private_require_encrypted_store: true
+private_storage_marker_file: .bunkermedia-private-store
+```
+
+Operational model:
+
+- Put `download_path` on an encrypted filesystem or encrypted-mounted path where possible.
+- If encrypted storage is real but mount heuristics cannot prove it, create the configured marker file in the media root.
+- Use a vault-capable profile with an optional PIN to mark content as `private` or `explicit`.
+- Non-vault profiles will not see those items in search, rails, recommendations, or playback endpoints.
+
+Important:
+
+- BunkerMedia does not use app-level “compressed hidden blobs” as the default privacy model.
+- At-rest protection should come from the underlying encrypted store.
+- Re-encoding/compression is a separate future storage optimization concern and can trade quality or CPU time.
 
 ## Deployment
 
