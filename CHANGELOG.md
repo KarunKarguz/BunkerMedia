@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.2] - 2026-03-13
+
+### Added
+
+- Multi-user profiles with persistent active-profile selection and optional kids-safe mode.
+- Profile-aware watch, like, dislike, and rating state via `profiles` and `profile_video_state`.
+- Queue job controls for pause, resume, and priority changes through the API and Bunku UI.
+- Recommendation card "Why this" explanations inside Bunku.
+
+### Changed
+
+- Video listing, search, recommendation ranking, and offline inventory now resolve against the active profile.
+- Kids-mode profiles now filter obviously mature metadata from Bunku rails and recommendations.
+
 ## [0.2.1] - 2026-03-13
 
 ### Added

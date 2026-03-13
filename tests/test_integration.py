@@ -197,6 +197,10 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("/offline/plan", paths)
             self.assertIn("/storage/enforce", paths)
             self.assertIn("/imports/organize", paths)
+            self.assertIn("/profiles", paths)
+            self.assertIn("/jobs/{job_id}/pause", paths)
+            self.assertIn("/jobs/{job_id}/resume", paths)
+            self.assertIn("/jobs/{job_id}/priority", paths)
 
             async def _exercise_api() -> None:
                 async with app.router.lifespan_context(app):
@@ -236,6 +240,21 @@ class IntegrationTests(unittest.TestCase):
                         imports = await client.post("/imports/organize")
                         self.assertEqual(imports.status_code, 200)
                         self.assertIn("status", imports.json())
+
+                        profiles = await client.get("/profiles")
+                        self.assertEqual(profiles.status_code, 200)
+                        self.assertGreaterEqual(len(profiles.json()["profiles"]), 1)
+
+                        created_profile = await client.post(
+                            "/profiles",
+                            json={"display_name": "Family", "is_kids": False},
+                        )
+                        self.assertEqual(created_profile.status_code, 200)
+                        profile_id = created_profile.json()["profile"]["profile_id"]
+
+                        selected = await client.post(f"/profiles/{profile_id}/select")
+                        self.assertEqual(selected.status_code, 200)
+                        self.assertEqual(selected.json()["profile"]["profile_id"], profile_id)
 
             asyncio.run(_exercise_api())
 
@@ -307,6 +326,32 @@ class IntegrationTests(unittest.TestCase):
                         pending = await client.get("/jobs", params={"status": "pending", "limit": 10})
                         self.assertEqual(pending.status_code, 200)
                         self.assertGreaterEqual(len(pending.json()), 1)
+                        queued_job = pending.json()[0]
+
+                        reprioritized = await client.post(
+                            f"/jobs/{queued_job['id']}/priority",
+                            json={"priority": 8},
+                        )
+                        self.assertEqual(reprioritized.status_code, 200)
+
+                        paused = await client.post(f"/jobs/{queued_job['id']}/pause")
+                        self.assertEqual(paused.status_code, 200)
+
+                        paused_jobs = await client.get("/jobs", params={"status": "paused", "limit": 10})
+                        self.assertEqual(paused_jobs.status_code, 200)
+                        self.assertGreaterEqual(len(paused_jobs.json()), 1)
+
+                        resumed = await client.post(f"/jobs/{queued_job['id']}/resume")
+                        self.assertEqual(resumed.status_code, 200)
+
+                        created_profile = await client.post(
+                            "/profiles",
+                            json={"display_name": "Kids Room", "is_kids": True},
+                        )
+                        self.assertEqual(created_profile.status_code, 200)
+                        profile_id = created_profile.json()["profile"]["profile_id"]
+                        selected = await client.post(f"/profiles/{profile_id}/select")
+                        self.assertEqual(selected.status_code, 200)
 
                         await service.workers.process_download_queue_once()
 
@@ -317,6 +362,12 @@ class IntegrationTests(unittest.TestCase):
                         videos = await client.get("/videos", params={"search": "Mock", "limit": 10})
                         self.assertEqual(videos.status_code, 200)
                         self.assertGreaterEqual(len(videos.json()), 1)
+
+                        watched = await client.post(
+                            "/videos/mockvid123/watched",
+                            json={"watch_seconds": 120, "completed": True, "liked": True},
+                        )
+                        self.assertEqual(watched.status_code, 200)
 
                         recs = await client.get("/recommendations", params={"limit": 5, "explain": "true"})
                         self.assertEqual(recs.status_code, 200)

@@ -10,20 +10,45 @@ from bunkermedia.models import Recommendation
 
 
 class RecommendationEngine:
+    KIDS_BLOCK_KEYWORDS = {
+        "kill",
+        "killing",
+        "murder",
+        "violent",
+        "violence",
+        "gore",
+        "blood",
+        "horror",
+        "terror",
+        "nsfw",
+        "adult",
+        "explicit",
+        "weapon",
+        "war",
+        "crime",
+        "drugs",
+    }
+
     def __init__(self, db: Database, logger: Any) -> None:
         self.db = db
         self.logger = logger
 
-    async def refresh_scores(self) -> None:
-        self._refresh_scores_sync()
+    async def refresh_scores(self, profile_id: str = Database.DEFAULT_PROFILE_ID) -> None:
+        self._refresh_scores_sync(profile_id=profile_id)
 
-    async def recommend(self, limit: int = 20, explain: bool = False) -> list[Recommendation]:
-        return self._recommend_sync(limit, explain)
+    async def recommend(
+        self,
+        limit: int = 20,
+        explain: bool = False,
+        profile_id: str = Database.DEFAULT_PROFILE_ID,
+        is_kids: bool = False,
+    ) -> list[Recommendation]:
+        return self._recommend_sync(limit, explain, profile_id=profile_id, is_kids=is_kids)
 
-    def _refresh_scores_sync(self) -> None:
-        prefs = self.db.get_preferences("channel")
-        watch_signal = self.db.fetch_history_signal()
-        candidates = self.db.get_recommendation_candidates(limit=3000)
+    def _refresh_scores_sync(self, profile_id: str = Database.DEFAULT_PROFILE_ID) -> None:
+        prefs = self.db.get_preferences("channel", profile_id=profile_id)
+        watch_signal = self.db.fetch_history_signal(profile_id=profile_id)
+        candidates = self.db.get_recommendation_candidates(profile_id=profile_id, limit=3000)
 
         for item in candidates:
             channel_key = str(item.get("channel") or "").lower()
@@ -33,15 +58,17 @@ class RecommendationEngine:
 
         self.logger.info("Recommendation features refreshed count=%d", len(candidates))
 
-    def _recommend_sync(self, limit: int, explain: bool) -> list[Recommendation]:
+    def _recommend_sync(self, limit: int, explain: bool, profile_id: str, is_kids: bool) -> list[Recommendation]:
         limit = max(1, limit)
-        prefs = self.db.get_preferences("channel")
-        watch_signal = self.db.fetch_history_signal()
-        profile_vector, profile_size = self._build_profile_vector()
-        candidates = self.db.get_recommendation_candidates(limit=4000)
+        prefs = self.db.get_preferences("channel", profile_id=profile_id)
+        watch_signal = self.db.fetch_history_signal(profile_id=profile_id)
+        profile_vector, profile_size = self._build_profile_vector(profile_id=profile_id)
+        candidates = self.db.get_recommendation_candidates(profile_id=profile_id, limit=max(limit * 8, 4000))
 
         scored: list[dict[str, Any]] = []
         for item in candidates:
+            if is_kids and not self._is_kids_safe(item):
+                continue
             video_id = str(item["video_id"])
             channel = str(item.get("channel") or "Unknown")
             channel_pref = float(prefs.get(channel.lower(), 0.0))
@@ -120,8 +147,8 @@ class RecommendationEngine:
 
         return recommendations
 
-    def _build_profile_vector(self) -> tuple[list[float], int]:
-        seeds = self.db.get_profile_embedding_seeds(limit=1200)
+    def _build_profile_vector(self, profile_id: str = Database.DEFAULT_PROFILE_ID) -> tuple[list[float], int]:
+        seeds = self.db.get_profile_embedding_seeds(profile_id=profile_id, limit=1200)
         accumulator: list[float] = []
         seed_count = 0
 
@@ -238,3 +265,14 @@ class RecommendationEngine:
     @staticmethod
     def _clamp(value: float, low: float, high: float) -> float:
         return max(low, min(high, value))
+
+    def _is_kids_safe(self, item: dict[str, Any]) -> bool:
+        text = " ".join(
+            [
+                str(item.get("title") or ""),
+                str(item.get("channel") or ""),
+                str(item.get("source_url") or ""),
+                str(item.get("rejected_reason") or ""),
+            ]
+        ).lower()
+        return not any(keyword in text for keyword in self.KIDS_BLOCK_KEYWORDS)

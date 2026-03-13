@@ -1,4 +1,10 @@
 const statusPill = document.getElementById("status-pill");
+const profileSelect = document.getElementById("profile-select");
+const profileAddBtn = document.getElementById("profile-add-btn");
+const profileForm = document.getElementById("profile-form");
+const profileName = document.getElementById("profile-name");
+const profileKids = document.getElementById("profile-kids");
+const kidsBadge = document.getElementById("kids-badge");
 const tvModeBtn = document.getElementById("tv-mode-btn");
 const refreshBtn = document.getElementById("refresh-btn");
 const syncBtn = document.getElementById("sync-btn");
@@ -57,9 +63,11 @@ const playerCloseBtn = document.getElementById("player-close-btn");
 
 const TV_MODE_KEY = "bunkermedia.tv_mode";
 const videoRegistry = new Map();
+const whyState = new Set();
 let activeVideoId = null;
 let lastFocusedElement = null;
 let tvModeEnabled = localStorage.getItem(TV_MODE_KEY) !== "off";
+let currentProfileId = null;
 
 function setStatus(text, tone = "neutral") {
   statusPill.textContent = text;
@@ -91,6 +99,25 @@ function setTvMode(enabled) {
   localStorage.setItem(TV_MODE_KEY, tvModeEnabled ? "on" : "off");
 }
 
+function setKidsModeBadge(enabled) {
+  kidsBadge.hidden = !enabled;
+}
+
+function renderProfiles(activeProfile, profiles = []) {
+  currentProfileId = activeProfile && activeProfile.profile_id ? activeProfile.profile_id : null;
+  profileSelect.innerHTML = "";
+  profiles.forEach((profile) => {
+    const option = document.createElement("option");
+    option.value = profile.profile_id;
+    option.textContent = profile.is_kids ? `${profile.display_name} (Kids)` : profile.display_name;
+    if (profile.profile_id === currentProfileId) {
+      option.selected = true;
+    }
+    profileSelect.appendChild(option);
+  });
+  setKidsModeBadge(Boolean(activeProfile && activeProfile.is_kids));
+}
+
 function formatHours(seconds = 0) {
   const hours = Number(seconds || 0) / 3600;
   return `${hours.toFixed(hours >= 10 ? 0 : 1)}h`;
@@ -102,6 +129,30 @@ function formatBytes(bytes = 0) {
     return "0 GB";
   }
   return `${(value / 1024 ** 3).toFixed(value >= 10 * 1024 ** 3 ? 0 : 1)} GB`;
+}
+
+function summarizeWhy(video) {
+  if (!video || !video.explanation || !video.explanation.components) {
+    return "";
+  }
+  const parts = video.explanation.components;
+  const strong = [];
+  if (Number(parts.semantic_similarity || 0) > 0.15) {
+    strong.push(`semantic match ${Number(parts.semantic_similarity).toFixed(2)}`);
+  }
+  if (Number(parts.channel_preference || 0) > 0.1) {
+    strong.push(`channel affinity ${Number(parts.channel_preference).toFixed(2)}`);
+  }
+  if (Number(parts.watch_history || 0) > 0.1) {
+    strong.push(`watch history ${Number(parts.watch_history).toFixed(2)}`);
+  }
+  if (Number(parts.recency || 0) > 0.2) {
+    strong.push(`freshness ${Number(parts.recency).toFixed(2)}`);
+  }
+  if (!strong.length) {
+    strong.push(`trend score ${Number(parts.trending || 0).toFixed(2)}`);
+  }
+  return `Why this: ${strong.join(" | ")}`;
 }
 
 function artSeed(video) {
@@ -319,6 +370,7 @@ function renderVideoCards(container, videos = [], source = "default") {
     const title = node.querySelector(".video-title");
     const meta = node.querySelector(".video-meta");
     const note = node.querySelector(".video-note");
+    const why = node.querySelector(".video-why");
     const actions = node.querySelector(".video-actions");
 
     card.tabIndex = 0;
@@ -336,13 +388,22 @@ function renderVideoCards(container, videos = [], source = "default") {
     meta.textContent = `${registeredVideo.channel || "Unknown"}  |  ${registeredVideo.upload_date || "Undated"}`;
 
     if (source === "recommended" && registeredVideo.explanation && registeredVideo.explanation.components) {
-      const parts = registeredVideo.explanation.components;
-      note.textContent =
-        `score ${(registeredVideo.score || 0).toFixed(2)}  |  semantic ${parts.semantic_similarity}  |  recency ${parts.recency}`;
+      note.textContent = summarizeWhy(registeredVideo);
+      why.textContent = [
+        `Final score ${(registeredVideo.score || 0).toFixed(2)}`,
+        `Trend ${Number(registeredVideo.explanation.components.trending || 0).toFixed(2)}`,
+        `Channel ${Number(registeredVideo.explanation.components.channel_preference || 0).toFixed(2)}`,
+        `History ${Number(registeredVideo.explanation.components.watch_history || 0).toFixed(2)}`,
+        `Semantic ${Number(registeredVideo.explanation.components.semantic_similarity || 0).toFixed(2)}`,
+        `Recency ${Number(registeredVideo.explanation.components.recency || 0).toFixed(2)}`,
+      ].join(" | ");
+      why.hidden = !whyState.has(String(registeredVideo.video_id));
     } else if (registeredVideo.downloaded || registeredVideo.local_path) {
       note.textContent = "Ready for offline playback.";
+      why.hidden = true;
     } else {
       note.textContent = registeredVideo.source_url ? "Available to queue in background." : "Metadata only.";
+      why.hidden = true;
     }
 
     card.addEventListener("click", async (event) => {
@@ -396,6 +457,22 @@ function renderVideoCards(container, videos = [], source = "default") {
       );
     }
 
+    if (source === "recommended" && registeredVideo.explanation) {
+      actions.appendChild(
+        actionButton(why.hidden ? "Why This" : "Hide Why", "btn-ghost", () => {
+          const key = String(registeredVideo.video_id);
+          if (why.hidden) {
+            whyState.add(key);
+            why.hidden = false;
+          } else {
+            whyState.delete(key);
+            why.hidden = true;
+          }
+          renderVideoCards(container, videos, source);
+        })
+      );
+    }
+
     container.appendChild(node);
   });
 }
@@ -433,6 +510,30 @@ function renderJobs(container, jobs, isDeadLetter = false) {
           await retryDeadLetter(job.id);
         })
       );
+    } else if (job.id) {
+      actions.appendChild(
+        actionButton("Up", "btn-ghost", async () => {
+          await updateJobPriority(job.id, Number(job.priority || 0) + 1);
+        })
+      );
+      actions.appendChild(
+        actionButton("Down", "btn-ghost", async () => {
+          await updateJobPriority(job.id, Number(job.priority || 0) - 1);
+        })
+      );
+      if (job.status === "paused") {
+        actions.appendChild(
+          actionButton("Resume", "btn-gold", async () => {
+            await resumeJob(job.id);
+          })
+        );
+      } else if (job.status === "pending") {
+        actions.appendChild(
+          actionButton("Pause", "btn-bad", async () => {
+            await pauseJob(job.id);
+          })
+        );
+      }
     }
 
     container.appendChild(node);
@@ -571,6 +672,7 @@ async function loadHome() {
   setStatus("Refreshing bunker...", "warn");
   try {
     const data = await fetchJson("/bunku/data/home?limit=16");
+    renderProfiles(data.active_profile || null, data.profiles || []);
     renderHeroStrip(data);
     renderFeatured(data);
     renderStats(data);
@@ -679,6 +781,45 @@ async function triggerImportsOrganize() {
   await loadHome();
 }
 
+async function pauseJob(jobId) {
+  await fetchJson(`/jobs/${jobId}/pause`, { method: "POST" });
+  setStatus(`Paused job ${jobId}`, "good");
+  await loadHome();
+}
+
+async function resumeJob(jobId) {
+  await fetchJson(`/jobs/${jobId}/resume`, { method: "POST" });
+  setStatus(`Resumed job ${jobId}`, "good");
+  await loadHome();
+}
+
+async function updateJobPriority(jobId, priority) {
+  await fetchJson(`/jobs/${jobId}/priority`, {
+    method: "POST",
+    body: JSON.stringify({ priority }),
+  });
+  setStatus(`Priority updated for job ${jobId}`, "good");
+  await loadHome();
+}
+
+async function selectProfile(profileId) {
+  await fetchJson(`/profiles/${encodeURIComponent(profileId)}/select`, { method: "POST" });
+  setStatus(`Switched to ${profileSelect.options[profileSelect.selectedIndex].text}`, "good");
+  await loadHome();
+}
+
+async function createProfile(displayName, isKids) {
+  const result = await fetchJson("/profiles", {
+    method: "POST",
+    body: JSON.stringify({ display_name: displayName, is_kids: isKids }),
+  });
+  setStatus(`Created profile ${result.profile.display_name}`, "good");
+  profileForm.hidden = true;
+  profileName.value = "";
+  profileKids.checked = false;
+  await loadHome();
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, {
     headers: {
@@ -700,6 +841,37 @@ refreshBtn.addEventListener("click", () => {
 
 tvModeBtn.addEventListener("click", () => {
   setTvMode(!tvModeEnabled);
+});
+
+profileAddBtn.addEventListener("click", () => {
+  profileForm.hidden = !profileForm.hidden;
+  if (!profileForm.hidden) {
+    profileName.focus();
+  }
+});
+
+profileSelect.addEventListener("change", async () => {
+  try {
+    await selectProfile(profileSelect.value);
+  } catch (err) {
+    console.error(err);
+    setStatus("Profile switch failed", "bad");
+  }
+});
+
+profileForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const displayName = profileName.value.trim();
+  if (!displayName) {
+    setStatus("Enter a profile name", "warn");
+    return;
+  }
+  try {
+    await createProfile(displayName, Boolean(profileKids.checked));
+  } catch (err) {
+    console.error(err);
+    setStatus("Profile creation failed", "bad");
+  }
 });
 
 syncBtn.addEventListener("click", async () => {

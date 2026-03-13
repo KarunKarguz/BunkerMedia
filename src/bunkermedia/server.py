@@ -44,6 +44,20 @@ class ProviderAcquirePayload(BaseModel):
     mode: str = Field(default="auto", pattern="^(auto|single|playlist|channel|trending)$")
 
 
+class JobPriorityPayload(BaseModel):
+    priority: int = Field(default=0, ge=-10, le=20)
+
+
+class ProfileCreatePayload(BaseModel):
+    display_name: str = Field(min_length=1, max_length=48)
+    is_kids: bool = False
+
+
+class ProfileUpdatePayload(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=48)
+    is_kids: bool | None = None
+
+
 def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     service = BunkerService(config_path=config_path)
     ui_root = Path(__file__).resolve().parent / "ui"
@@ -99,6 +113,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     @app.get("/bunku/data/home")
     async def bunku_home(limit: int = Query(16, ge=4, le=60)):
         await service.refresh_network_state()
+        active_profile = service.get_active_profile()
         videos = service.list_videos(limit=max(200, limit * 8), search=None)
         video_by_id = {str(item["video_id"]): item for item in videos if item.get("video_id")}
 
@@ -141,6 +156,8 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             "offline_mode": not service.network.is_online,
             "offline_inventory": service.get_offline_inventory(),
             "system": service.get_system_state(),
+            "active_profile": active_profile,
+            "profiles": service.list_profiles(),
         }
 
     @app.post("/bunku/data/sync")
@@ -234,6 +251,29 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     async def providers():
         return {"providers": service.list_providers()}
 
+    @app.get("/profiles")
+    async def profiles():
+        return {"active_profile": service.get_active_profile(), "profiles": service.list_profiles()}
+
+    @app.post("/profiles")
+    async def create_profile(payload: ProfileCreatePayload):
+        profile = service.create_profile(display_name=payload.display_name, is_kids=payload.is_kids)
+        return {"status": "created", "profile": profile}
+
+    @app.patch("/profiles/{profile_id}")
+    async def update_profile(profile_id: str, payload: ProfileUpdatePayload):
+        profile = service.update_profile(profile_id, display_name=payload.display_name, is_kids=payload.is_kids)
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        return {"status": "updated", "profile": profile}
+
+    @app.post("/profiles/{profile_id}/select")
+    async def select_profile(profile_id: str):
+        profile = service.select_profile(profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        return {"status": "selected", "profile": profile}
+
     @app.get("/discover")
     async def discover(provider: str = "youtube", source: str = "", limit: int = Query(20, ge=1, le=200)):
         if not source.strip() and provider.strip().lower() != "local":
@@ -258,10 +298,28 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
 
     @app.get("/jobs")
     async def list_jobs(
-        status: str | None = Query(default=None, pattern="^(pending|processing|done|failed|dead)?$"),
+        status: str | None = Query(default=None, pattern="^(pending|processing|paused|done|failed|dead)?$"),
         limit: int = Query(100, ge=1, le=1000),
     ):
         return service.list_download_jobs(status=status, limit=limit)
+
+    @app.post("/jobs/{job_id}/pause")
+    async def pause_job(job_id: int):
+        if not service.pause_download_job(job_id):
+            raise HTTPException(status_code=400, detail="Job is not pending or was not found")
+        return {"status": "paused", "job_id": job_id}
+
+    @app.post("/jobs/{job_id}/resume")
+    async def resume_job(job_id: int):
+        if not service.resume_download_job(job_id):
+            raise HTTPException(status_code=400, detail="Job is not paused or was not found")
+        return {"status": "pending", "job_id": job_id}
+
+    @app.post("/jobs/{job_id}/priority")
+    async def prioritize_job(job_id: int, payload: JobPriorityPayload):
+        if not service.set_download_job_priority(job_id, payload.priority):
+            raise HTTPException(status_code=404, detail="Job not found")
+        return {"status": "updated", "job_id": job_id, "priority": payload.priority}
 
     @app.get("/deadletters")
     async def list_deadletters(limit: int = Query(100, ge=1, le=1000)):

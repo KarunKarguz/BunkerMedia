@@ -22,6 +22,25 @@ from bunkermedia.workers import WorkerManager
 
 
 class BunkerService:
+    KIDS_BLOCK_KEYWORDS = {
+        "kill",
+        "killing",
+        "murder",
+        "violent",
+        "violence",
+        "gore",
+        "blood",
+        "horror",
+        "terror",
+        "nsfw",
+        "adult",
+        "explicit",
+        "weapon",
+        "war",
+        "crime",
+        "drugs",
+    }
+
     def __init__(self, config_path: str | Path = "config.yaml") -> None:
         self.config = AppConfig.from_yaml(config_path)
         self.logger = setup_logging(self.config.logs_dir, mode=self.config.log_format)
@@ -151,7 +170,10 @@ class BunkerService:
         self.metrics.inc("sync_completed_total")
 
     async def recommend(self, limit: int = 20, explain: bool = False):
-        return await self.recommender.recommend(limit=limit, explain=explain)
+        active = self.get_active_profile()
+        profile_id = str(active.get("profile_id") or self.db.DEFAULT_PROFILE_ID)
+        is_kids = bool(active.get("is_kids"))
+        return await self.recommender.recommend(limit=limit, explain=explain, profile_id=profile_id, is_kids=is_kids)
 
     def list_download_jobs(self, status: str | None = None, limit: int = 100):
         return self.db.list_download_jobs(status=status, limit=limit)
@@ -162,8 +184,20 @@ class BunkerService:
     def retry_dead_letter(self, dead_letter_id: int) -> int | None:
         return self.db.retry_dead_letter(dead_letter_id)
 
+    def pause_download_job(self, job_id: int) -> bool:
+        return self.db.pause_job(job_id)
+
+    def resume_download_job(self, job_id: int) -> bool:
+        return self.db.resume_job(job_id)
+
+    def set_download_job_priority(self, job_id: int, priority: int) -> bool:
+        return self.db.set_job_priority(job_id, priority)
+
     def list_videos(self, limit: int = 100, search: str | None = None):
-        return self.db.list_videos(limit=limit, search=search)
+        active = self.get_active_profile()
+        rows = self.db.list_videos(limit=max(limit * 4, limit), search=search, profile_id=str(active["profile_id"]))
+        filtered = [row for row in rows if self._video_allowed_for_profile(row, active)]
+        return filtered[:limit]
 
     def list_providers(self) -> list[str]:
         return self.providers.list()
@@ -181,7 +215,11 @@ class BunkerService:
         return items
 
     def get_video(self, video_id: str):
-        return self.db.get_video(video_id)
+        active = self.get_active_profile()
+        video = self.db.get_video(video_id, profile_id=str(active["profile_id"]))
+        if not video or not self._video_allowed_for_profile(video, active):
+            return None
+        return video
 
     def mark_watched(
         self,
@@ -193,8 +231,10 @@ class BunkerService:
         rating: float | None = None,
         notes: str | None = None,
     ) -> None:
+        profile = self.get_active_profile()
         self.db.mark_watched(
             video_id,
+            profile_id=str(profile["profile_id"]),
             watch_seconds=watch_seconds,
             completed=completed,
             liked=liked,
@@ -202,6 +242,18 @@ class BunkerService:
             rating=rating,
             notes=notes,
         )
+        video = self.db.get_video(video_id, profile_id=str(profile["profile_id"]))
+        channel_name = str(video.get("channel") or "").strip().lower() if video else ""
+        if channel_name:
+            weight: float | None = None
+            if liked is True:
+                weight = 1.0
+            elif disliked is True:
+                weight = -1.0
+            elif rating is not None:
+                weight = max(-1.0, min(1.0, (float(rating) - 2.5) / 2.5))
+            if weight is not None:
+                self.db.set_preference("channel", channel_name, weight=weight, profile_id=str(profile["profile_id"]))
 
     def get_stream_path(self, video_id: str) -> Path | None:
         video = self.db.get_video(video_id)
@@ -234,7 +286,37 @@ class BunkerService:
         return result
 
     def get_offline_inventory(self) -> dict[str, int]:
-        return self.db.get_offline_inventory_stats()
+        active = self.get_active_profile()
+        return self.db.get_offline_inventory_stats(profile_id=str(active["profile_id"]))
+
+    def list_profiles(self) -> list[dict[str, object]]:
+        return self.db.list_profiles()
+
+    def get_active_profile(self) -> dict[str, object]:
+        profile = self.db.get_profile(self.db.get_active_profile_id())
+        if profile:
+            return profile
+        fallback = self.db.set_active_profile(self.db.DEFAULT_PROFILE_ID)
+        return fallback or {
+            "profile_id": self.db.DEFAULT_PROFILE_ID,
+            "display_name": "Default",
+            "is_kids": False,
+            "avatar_color": "#d8b56a",
+        }
+
+    def create_profile(self, display_name: str, is_kids: bool = False) -> dict[str, object]:
+        return self.db.create_profile(display_name=display_name, is_kids=is_kids)
+
+    def update_profile(
+        self,
+        profile_id: str,
+        display_name: str | None = None,
+        is_kids: bool | None = None,
+    ) -> dict[str, object] | None:
+        return self.db.update_profile(profile_id=profile_id, display_name=display_name, is_kids=is_kids)
+
+    def select_profile(self, profile_id: str) -> dict[str, object] | None:
+        return self.db.set_active_profile(profile_id)
 
     def get_system_state(self) -> dict[str, object]:
         return self.system_monitor.snapshot()
@@ -250,6 +332,7 @@ class BunkerService:
             "schema_version": self.db.get_schema_version(),
             "providers": self.list_providers(),
             "offline_inventory": self.get_offline_inventory(),
+            "active_profile": self.get_active_profile(),
             "system": self.get_system_state(),
         }
 
@@ -283,3 +366,16 @@ class BunkerService:
 
     def list_schema_migrations(self) -> list[dict[str, object]]:
         return self.db.list_schema_migrations()
+
+    def _video_allowed_for_profile(self, video: dict[str, object], profile: dict[str, object]) -> bool:
+        if not bool(profile.get("is_kids")):
+            return True
+        text = " ".join(
+            [
+                str(video.get("title") or ""),
+                str(video.get("channel") or ""),
+                str(video.get("source_url") or ""),
+                str(video.get("rejected_reason") or ""),
+            ]
+        ).lower()
+        return not any(keyword in text for keyword in self.KIDS_BLOCK_KEYWORDS)

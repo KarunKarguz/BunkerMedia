@@ -23,7 +23,8 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Transcript + metadata intelligence pipeline with lightweight hashed embeddings
 - SQLite-backed metadata, watch history, and preferences
 - Hybrid recommendation engine (semantic + behavioral + trending) with diversity rerank
-- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, queue panel, feedback controls, and inline playback
+- Multi-user profiles with active-profile switching and kids-safe mode
+- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, queue panel, recommendation reasoning, feedback controls, and inline playback
 - FastAPI media server
 - Async background workers for sync and queued downloads
 - Offline horizon planner for auto-queuing watch-ready content
@@ -124,6 +125,8 @@ Inside Bunku, TV mode is enabled by default:
 - Arrow keys move focus across controls and media rails
 - `Enter` plays local titles or queues discovered items
 - `Esc` closes the inline player overlay
+- Profiles can be switched from the top bar, including kids-safe profiles
+- Queue rows support pause/resume and priority tuning directly from the UI
 
 ## API Endpoints
 
@@ -132,6 +135,10 @@ Inside Bunku, TV mode is enabled by default:
 - `GET /schema`
 - `GET /system`
 - `GET /providers`
+- `GET /profiles`
+- `POST /profiles`
+- `PATCH /profiles/{profile_id}`
+- `POST /profiles/{profile_id}/select`
 - `POST /imports/organize`
 - `GET /offline/inventory`
 - `POST /offline/plan`
@@ -146,6 +153,9 @@ Inside Bunku, TV mode is enabled by default:
 - `GET /videos?limit=100&search=keyword`
 - `GET /videos/{video_id}`
 - `GET /jobs?status=pending&limit=100`
+- `POST /jobs/{job_id}/pause`
+- `POST /jobs/{job_id}/resume`
+- `POST /jobs/{job_id}/priority`
 - `GET /deadletters?limit=100`
 - `POST /deadletters/{dead_letter_id}/retry`
 - `GET /recommendations?limit=20&explain=true`

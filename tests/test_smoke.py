@@ -22,7 +22,8 @@ def test_config_defaults(tmp_path: Path) -> None:
 def test_database_init(tmp_path: Path) -> None:
     db = Database(tmp_path / "test.db")
     db.initialize()
-    assert db.get_schema_version() >= 4
+    assert db.get_schema_version() >= 5
+    assert len(db.list_profiles()) >= 2
     db.close()
 
 
@@ -127,8 +128,34 @@ def test_schema_migrations_list(tmp_path: Path) -> None:
     db = Database(tmp_path / "schema.db")
     db.initialize()
     migrations = db.list_schema_migrations()
-    assert len(migrations) >= 4
-    assert migrations[-1]["version"] >= 4
+    assert len(migrations) >= 5
+    assert migrations[-1]["version"] >= 5
+    db.close()
+
+
+def test_profile_state_and_queue_controls(tmp_path: Path) -> None:
+    db = Database(tmp_path / "profiles.db")
+    db.initialize()
+    profile = db.create_profile("Parents", is_kids=False)
+    assert profile["profile_id"].startswith("parents")
+    selected = db.set_active_profile(profile["profile_id"])
+    assert selected is not None
+
+    db.upsert_video(VideoMetadata(video_id="vid1", title="Alpha", channel="Demo", downloaded=False))
+    db.mark_watched("vid1", profile_id=profile["profile_id"], watch_seconds=90, completed=True, liked=True)
+    video = db.get_video("vid1", profile_id=profile["profile_id"])
+    assert int(video["watched"]) == 1
+    assert int(video["liked"]) == 1
+
+    job_id = db.queue_download("https://example.invalid/demo", target_type="single", priority=1)
+    assert db.pause_job(job_id) is True
+    paused = db.list_download_jobs(status="paused", limit=5)
+    assert len(paused) == 1
+    assert db.set_job_priority(job_id, 4) is True
+    assert db.resume_job(job_id) is True
+    pending = db.list_download_jobs(status="pending", limit=5)
+    assert len(pending) == 1
+    assert int(pending[0]["priority"]) == 4
     db.close()
 
 

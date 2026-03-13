@@ -99,10 +99,12 @@ Deliver a local "Bunker Mode Netflix" interface for family-friendly usage.
 - [x] Search from the UI.
 - [ ] Filters (duration, channel, freshness, downloaded-only).
 - [x] Inline playback modal with keyboard/D-pad friendly controls.
-- [ ] Recommendation cards with "Why this" explanation.
+- [x] Recommendation cards with "Why this" explanation.
 - [ ] Feedback controls: Like, Dislike, Not Interested, Hide Channel.
 - [x] Queue controls: add source, sync, offline top-up, storage cleanup, retry dead-letter.
-- [ ] Queue controls: Prioritize, Pause, Clear Failed.
+- [x] Queue controls: Prioritize and Pause/Resume.
+- [x] Profile switcher with kids mode.
+- [ ] Queue controls: Clear Failed.
 
 ### Exit Criteria
 
@@ -175,6 +177,6 @@ Production-grade open-source release for broad self-hosting.
 ## Next 4-Week Execution Plan
 
 1. Add resumable background download batches and partial-recovery logic.
-2. Expand Bunku Mode controls (filters, explicit "why this", queue prioritization/pause).
+2. Add Bunku Mode filters and dead-letter cleanup actions.
 3. Add optional authentication layer for non-LAN exposure.
 4. Add community provider adapter registry and validation policy.

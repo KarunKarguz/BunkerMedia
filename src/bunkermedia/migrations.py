@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +60,7 @@ def _ordered_migrations() -> list[Migration]:
         Migration(2, "download_retry_and_deadletter", _migration_download_retry_deadletter),
         Migration(3, "download_next_run_index", _migration_next_run_index),
         Migration(4, "video_duration_and_file_size", _migration_video_duration_file_size),
+        Migration(5, "profiles_and_profile_state", _migration_profiles_and_profile_state),
     ]
 
 
@@ -128,6 +129,81 @@ def _migration_video_duration_file_size(conn: "sqlite3.Connection") -> None:
     _add_column_if_missing(conn, "videos", "duration_seconds", "INTEGER")
     _add_column_if_missing(conn, "videos", "file_size_bytes", "INTEGER DEFAULT 0")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_duration ON videos(duration_seconds)")
+
+
+def _migration_profiles_and_profile_state(conn: "sqlite3.Connection") -> None:
+    _add_column_if_missing(conn, "watch_history", "profile_id", "TEXT DEFAULT 'default'")
+    conn.execute("UPDATE watch_history SET profile_id='default' WHERE profile_id IS NULL OR profile_id=''")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS profiles (
+            profile_id TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            is_kids INTEGER DEFAULT 0,
+            avatar_color TEXT DEFAULT '#d8b56a',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS profile_video_state (
+            profile_id TEXT NOT NULL,
+            video_id TEXT NOT NULL,
+            watched INTEGER DEFAULT 0,
+            liked INTEGER DEFAULT 0,
+            disliked INTEGER DEFAULT 0,
+            rating REAL DEFAULT 0,
+            completed INTEGER DEFAULT 0,
+            rejected_reason TEXT,
+            total_watch_seconds INTEGER DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(profile_id, video_id),
+            FOREIGN KEY(profile_id) REFERENCES profiles(profile_id),
+            FOREIGN KEY(video_id) REFERENCES videos(video_id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_watch_history_profile_video ON watch_history(profile_id, video_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_profile_state_profile ON profile_video_state(profile_id, updated_at)")
+
+    row = conn.execute("SELECT COALESCE(MAX(applied_at), '') AS applied_at FROM schema_migrations").fetchone()
+    fallback_now = str(row["applied_at"] or "1970-01-01T00:00:00+00:00")
+    for profile_id, display_name, is_kids, color in [
+        ("default", "Default", 0, "#d8b56a"),
+        ("kids", "Kids", 1, "#63d79a"),
+    ]:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO profiles (profile_id, display_name, is_kids, avatar_color, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (profile_id, display_name, is_kids, color, fallback_now, fallback_now),
+        )
+
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO profile_video_state (
+            profile_id, video_id, watched, liked, disliked, rating, completed, rejected_reason, total_watch_seconds, updated_at
+        )
+        SELECT
+            'default',
+            video_id,
+            watched,
+            liked,
+            disliked,
+            rating,
+            watched,
+            rejected_reason,
+            0,
+            COALESCE(updated_at, ?)
+        FROM videos
+        WHERE watched=1 OR liked=1 OR disliked=1 OR rating > 0 OR (rejected_reason IS NOT NULL AND rejected_reason != '')
+        """,
+        (fallback_now,),
+    )
 
 
 def _add_column_if_missing(conn: "sqlite3.Connection", table: str, column: str, column_spec: str) -> None:

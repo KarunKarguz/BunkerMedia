@@ -19,6 +19,24 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <div class="profile-cluster panel-lite">
+          <div class="profile-head">
+            <span class="profile-label">Profile</span>
+            <span id="kids-badge" class="kids-badge" hidden>Kids Mode</span>
+          </div>
+          <div class="profile-controls">
+            <select id="profile-select" aria-label="Profile selector"></select>
+            <button id="profile-add-btn" class="btn btn-gold topbar-btn" type="button">New Profile</button>
+          </div>
+          <form id="profile-form" class="profile-form" hidden>
+            <input id="profile-name" type="text" maxlength="48" placeholder="Profile name" />
+            <label class="checkbox-pill">
+              <input id="profile-kids" type="checkbox" />
+              <span>Kids Safe</span>
+            </label>
+            <button class="btn btn-primary" type="submit">Create</button>
+          </form>
+        </div>
         <button id="tv-mode-btn" class="btn btn-ghost topbar-btn" type="button" aria-pressed="false">
           TV Mode Off
         </button>
@@ -223,6 +241,7 @@
           <h3 class="video-title"></h3>
           <p class="video-meta"></p>
           <p class="video-note"></p>
+          <div class="video-why" hidden></div>
           <div class="video-actions"></div>
         </div>
       </article>

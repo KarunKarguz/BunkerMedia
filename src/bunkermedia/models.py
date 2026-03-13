@@ -26,3 +26,11 @@ class Recommendation:
     downloaded: bool
     local_path: Optional[str]
     explanation: Optional[dict[str, Any]] = None
+
+
+@dataclass(slots=True)
+class UserProfile:
+    profile_id: str
+    display_name: str
+    is_kids: bool = False
+    avatar_color: str = "#d8b56a"

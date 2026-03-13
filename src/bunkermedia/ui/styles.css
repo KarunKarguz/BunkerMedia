@@ -80,8 +80,75 @@ body.modal-open {
   gap: 12px;
 }
 
+.panel-lite {
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(18, 18, 20, 0.72);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.22);
+}
+
 .topbar-btn {
   min-width: 130px;
+}
+
+.profile-cluster {
+  display: grid;
+  gap: 10px;
+  min-width: 320px;
+}
+
+.profile-head,
+.profile-controls,
+.profile-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-head {
+  justify-content: space-between;
+}
+
+.profile-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.kids-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(99, 215, 154, 0.14);
+  border: 1px solid rgba(99, 215, 154, 0.32);
+  color: #dff7ea;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.profile-form {
+  flex-wrap: wrap;
+}
+
+.checkbox-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.checkbox-pill input {
+  width: auto;
+  margin: 0;
 }
 
 .brand {
@@ -625,6 +692,16 @@ select:focus-visible,
   min-height: 2.5em;
 }
 
+.video-why {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(216, 181, 106, 0.08);
+  border: 1px solid rgba(216, 181, 106, 0.18);
+  color: #f1e4c2;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .video-actions {
   display: flex;
   flex-wrap: wrap;
@@ -785,6 +862,17 @@ body.tv-mode .btn:hover {
 
   .topbar-actions {
     width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .profile-cluster {
+    min-width: 0;
+  }
+
+  .profile-head,
+  .profile-controls,
+  .profile-form {
     flex-direction: column;
     align-items: stretch;
   }

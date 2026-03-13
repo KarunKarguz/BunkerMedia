@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
@@ -8,10 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from bunkermedia.migrations import apply_migrations, get_schema_version, list_migrations
-from bunkermedia.models import VideoMetadata
+from bunkermedia.models import UserProfile, VideoMetadata
 
 
 class Database:
+    DEFAULT_PROFILE_ID = "default"
+
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -90,6 +93,7 @@ class Database:
                 """
             )
             apply_migrations(self.conn, utc_now=self._utc_now())
+            self._ensure_profile_defaults()
             self.conn.commit()
 
     @staticmethod
@@ -103,6 +107,149 @@ class Database:
     def list_schema_migrations(self) -> list[dict[str, object]]:
         with self._lock:
             return list_migrations(self.conn)
+
+    def _ensure_profile_defaults(self) -> None:
+        now = self._utc_now()
+        for profile_id, display_name, is_kids, color in [
+            ("default", "Default", 0, "#d8b56a"),
+            ("kids", "Kids", 1, "#63d79a"),
+        ]:
+            self.conn.execute(
+                """
+                INSERT OR IGNORE INTO profiles (profile_id, display_name, is_kids, avatar_color, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (profile_id, display_name, is_kids, color, now, now),
+            )
+
+    def list_profiles(self) -> list[dict[str, Any]]:
+        active_profile_id = self.get_active_profile_id()
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT
+                    p.profile_id,
+                    p.display_name,
+                    p.is_kids,
+                    p.avatar_color,
+                    p.created_at,
+                    p.updated_at,
+                    COALESCE(COUNT(ps.video_id), 0) AS touched_items,
+                    COALESCE(SUM(CASE WHEN ps.watched=1 THEN 1 ELSE 0 END), 0) AS watched_items
+                FROM profiles p
+                LEFT JOIN profile_video_state ps ON ps.profile_id=p.profile_id
+                GROUP BY p.profile_id, p.display_name, p.is_kids, p.avatar_color, p.created_at, p.updated_at
+                ORDER BY p.created_at ASC, p.profile_id ASC
+                """
+            ).fetchall()
+        return [
+            {
+                "profile_id": str(row["profile_id"]),
+                "display_name": str(row["display_name"]),
+                "is_kids": bool(row["is_kids"]),
+                "avatar_color": str(row["avatar_color"] or "#d8b56a"),
+                "created_at": str(row["created_at"]),
+                "updated_at": str(row["updated_at"]),
+                "touched_items": int(row["touched_items"] or 0),
+                "watched_items": int(row["watched_items"] or 0),
+                "is_active": str(row["profile_id"]) == active_profile_id,
+            }
+            for row in rows
+        ]
+
+    def get_profile(self, profile_id: str) -> dict[str, Any] | None:
+        normalized = (profile_id or "").strip().lower()
+        if not normalized:
+            return None
+        with self._lock:
+            row = self.conn.execute(
+                """
+                SELECT profile_id, display_name, is_kids, avatar_color, created_at, updated_at
+                FROM profiles
+                WHERE profile_id=?
+                """,
+                (normalized,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "profile_id": str(row["profile_id"]),
+            "display_name": str(row["display_name"]),
+            "is_kids": bool(row["is_kids"]),
+            "avatar_color": str(row["avatar_color"] or "#d8b56a"),
+            "created_at": str(row["created_at"]),
+            "updated_at": str(row["updated_at"]),
+        }
+
+    def create_profile(self, display_name: str, is_kids: bool = False) -> dict[str, Any]:
+        now = self._utc_now()
+        base_slug = self._slugify_profile_id(display_name) or f"profile-{int(datetime.now().timestamp())}"
+        profile_id = base_slug
+        suffix = 2
+        with self._lock:
+            while self.conn.execute("SELECT 1 FROM profiles WHERE profile_id=?", (profile_id,)).fetchone():
+                profile_id = f"{base_slug}-{suffix}"
+                suffix += 1
+            color = "#63d79a" if is_kids else "#d8b56a"
+            self.conn.execute(
+                """
+                INSERT INTO profiles (profile_id, display_name, is_kids, avatar_color, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (profile_id, display_name.strip(), int(is_kids), color, now, now),
+            )
+            self.conn.commit()
+        return self.get_profile(profile_id) or {}
+
+    def update_profile(
+        self,
+        profile_id: str,
+        display_name: str | None = None,
+        is_kids: bool | None = None,
+    ) -> dict[str, Any] | None:
+        normalized = (profile_id or "").strip().lower()
+        current = self.get_profile(normalized)
+        if not current:
+            return None
+        updated_name = display_name.strip() if display_name and display_name.strip() else current["display_name"]
+        updated_is_kids = int(current["is_kids"] if is_kids is None else bool(is_kids))
+        updated_color = "#63d79a" if updated_is_kids else str(current["avatar_color"] or "#d8b56a")
+        with self._lock:
+            self.conn.execute(
+                """
+                UPDATE profiles
+                SET display_name=?, is_kids=?, avatar_color=?, updated_at=?
+                WHERE profile_id=?
+                """,
+                (updated_name, updated_is_kids, updated_color, self._utc_now(), normalized),
+            )
+            self.conn.commit()
+        return self.get_profile(normalized)
+
+    def get_active_profile_id(self) -> str:
+        with self._lock:
+            row = self.conn.execute(
+                """
+                SELECT pref_value
+                FROM preferences
+                WHERE pref_type='system' AND pref_key='active_profile'
+                LIMIT 1
+                """
+            ).fetchone()
+        value = str(row["pref_value"]).strip().lower() if row and row["pref_value"] else self.DEFAULT_PROFILE_ID
+        return value or self.DEFAULT_PROFILE_ID
+
+    def set_active_profile(self, profile_id: str) -> dict[str, Any] | None:
+        profile = self.get_profile(profile_id)
+        if not profile:
+            return None
+        self.set_preference("system", "active_profile", pref_value=str(profile["profile_id"]), weight=1.0)
+        return self.get_profile(str(profile["profile_id"]))
+
+    @staticmethod
+    def _slugify_profile_id(value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+        return normalized[:40]
 
     def upsert_video(self, meta: VideoMetadata) -> None:
         now = self._utc_now()
@@ -173,6 +320,7 @@ class Database:
     def mark_watched(
         self,
         video_id: str,
+        profile_id: str = DEFAULT_PROFILE_ID,
         watch_seconds: int = 0,
         completed: bool = True,
         liked: bool | None = None,
@@ -181,14 +329,16 @@ class Database:
         notes: str | None = None,
     ) -> None:
         now = self._utc_now()
+        normalized_profile = (profile_id or self.DEFAULT_PROFILE_ID).strip().lower() or self.DEFAULT_PROFILE_ID
         with self._lock:
             self.conn.execute(
                 """
                 INSERT INTO watch_history (
-                    video_id, watched_at, watch_seconds, completed, liked, disliked, rating, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    profile_id, video_id, watched_at, watch_seconds, completed, liked, disliked, rating, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    normalized_profile,
                     video_id,
                     now,
                     watch_seconds,
@@ -197,6 +347,54 @@ class Database:
                     int(bool(disliked)) if disliked is not None else 0,
                     rating,
                     notes,
+                ),
+            )
+            existing = self.conn.execute(
+                """
+                SELECT watched, liked, disliked, rating, completed, rejected_reason, total_watch_seconds
+                FROM profile_video_state
+                WHERE profile_id=? AND video_id=?
+                """,
+                (normalized_profile, video_id),
+            ).fetchone()
+            total_watch_seconds = int(watch_seconds or 0)
+            if existing:
+                total_watch_seconds += int(existing["total_watch_seconds"] or 0)
+            watched_value = 1 if completed or int(watch_seconds or 0) > 0 else int(existing["watched"] or 0) if existing else 0
+            liked_value = int(bool(liked)) if liked is not None else int(existing["liked"] or 0) if existing else 0
+            disliked_value = (
+                int(bool(disliked)) if disliked is not None else int(existing["disliked"] or 0) if existing else 0
+            )
+            rating_value = rating if rating is not None else float(existing["rating"] or 0.0) if existing else 0.0
+            completed_value = 1 if completed else int(existing["completed"] or 0) if existing else 0
+            rejected_reason_value = str(existing["rejected_reason"]) if existing and existing["rejected_reason"] else None
+            self.conn.execute(
+                """
+                INSERT INTO profile_video_state (
+                    profile_id, video_id, watched, liked, disliked, rating, completed,
+                    rejected_reason, total_watch_seconds, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(profile_id, video_id) DO UPDATE SET
+                    watched=excluded.watched,
+                    liked=excluded.liked,
+                    disliked=excluded.disliked,
+                    rating=excluded.rating,
+                    completed=excluded.completed,
+                    rejected_reason=COALESCE(profile_video_state.rejected_reason, excluded.rejected_reason),
+                    total_watch_seconds=excluded.total_watch_seconds,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    normalized_profile,
+                    video_id,
+                    watched_value,
+                    liked_value,
+                    disliked_value,
+                    rating_value,
+                    completed_value,
+                    rejected_reason_value,
+                    total_watch_seconds,
+                    now,
                 ),
             )
             self.conn.execute(
@@ -291,6 +489,45 @@ class Database:
                 (status, error, self._utc_now(), job_id),
             )
             self.conn.commit()
+
+    def set_job_priority(self, job_id: int, priority: int) -> bool:
+        with self._lock:
+            cursor = self.conn.execute(
+                """
+                UPDATE download_jobs
+                SET priority=?, updated_at=?
+                WHERE id=?
+                """,
+                (priority, self._utc_now(), job_id),
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
+
+    def pause_job(self, job_id: int) -> bool:
+        with self._lock:
+            cursor = self.conn.execute(
+                """
+                UPDATE download_jobs
+                SET status='paused', updated_at=?
+                WHERE id=? AND status='pending'
+                """,
+                (self._utc_now(), job_id),
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
+
+    def resume_job(self, job_id: int) -> bool:
+        with self._lock:
+            cursor = self.conn.execute(
+                """
+                UPDATE download_jobs
+                SET status='pending', updated_at=?
+                WHERE id=? AND status='paused'
+                """,
+                (self._utc_now(), job_id),
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
 
     def requeue_job_with_backoff(self, job_id: int, error: str, delay_seconds: int) -> None:
         run_at = datetime.now(timezone.utc) + timedelta(seconds=max(1, delay_seconds))
@@ -429,18 +666,40 @@ class Database:
             self.conn.commit()
             return new_job_id
 
-    def list_videos(self, limit: int = 100, search: str | None = None) -> list[dict[str, Any]]:
+    def list_videos(
+        self,
+        limit: int = 100,
+        search: str | None = None,
+        profile_id: str = DEFAULT_PROFILE_ID,
+    ) -> list[dict[str, Any]]:
+        normalized_profile = (profile_id or self.DEFAULT_PROFILE_ID).strip().lower() or self.DEFAULT_PROFILE_ID
+        is_default_profile = 1 if normalized_profile == self.DEFAULT_PROFILE_ID else 0
         query = """
             SELECT v.video_id, v.title, v.channel, v.upload_date, v.local_path, v.downloaded,
-                   v.duration_seconds, v.file_size_bytes, v.watched, v.liked, v.disliked,
-                   v.rating, v.rejected_reason, v.trending_score,
+                   v.duration_seconds, v.file_size_bytes,
+                   CASE WHEN ?=1 THEN COALESCE(ps.watched, v.watched) ELSE COALESCE(ps.watched, 0) END AS watched,
+                   CASE WHEN ?=1 THEN COALESCE(ps.liked, v.liked) ELSE COALESCE(ps.liked, 0) END AS liked,
+                   CASE WHEN ?=1 THEN COALESCE(ps.disliked, v.disliked) ELSE COALESCE(ps.disliked, 0) END AS disliked,
+                   CASE WHEN ?=1 THEN COALESCE(ps.rating, v.rating) ELSE COALESCE(ps.rating, 0) END AS rating,
+                   CASE WHEN ?=1 THEN COALESCE(ps.rejected_reason, v.rejected_reason) ELSE ps.rejected_reason END AS rejected_reason,
+                   v.trending_score,
                    v.channel_preference, v.watch_score, v.source_url, v.updated_at,
                    COALESCE(i.transcript_source, 'none') AS transcript_source,
-                   COALESCE(i.quality_score, 0.0) AS intelligence_quality
+                   COALESCE(i.quality_score, 0.0) AS intelligence_quality,
+                   COALESCE(ps.completed, 0) AS completed,
+                   COALESCE(ps.total_watch_seconds, 0) AS total_watch_seconds
             FROM videos v
             LEFT JOIN video_intelligence i ON i.video_id=v.video_id
+            LEFT JOIN profile_video_state ps ON ps.video_id=v.video_id AND ps.profile_id=?
         """
-        params: list[Any] = []
+        params: list[Any] = [
+            is_default_profile,
+            is_default_profile,
+            is_default_profile,
+            is_default_profile,
+            is_default_profile,
+            normalized_profile,
+        ]
         if search:
             query += " WHERE v.title LIKE ? OR v.channel LIKE ? "
             wildcard = f"%{search}%"
@@ -452,21 +711,39 @@ class Database:
             rows = self.conn.execute(query, tuple(params)).fetchall()
         return [dict(row) for row in rows]
 
-    def get_video(self, video_id: str) -> dict[str, Any] | None:
+    def get_video(self, video_id: str, profile_id: str = DEFAULT_PROFILE_ID) -> dict[str, Any] | None:
+        normalized_profile = (profile_id or self.DEFAULT_PROFILE_ID).strip().lower() or self.DEFAULT_PROFILE_ID
+        is_default_profile = 1 if normalized_profile == self.DEFAULT_PROFILE_ID else 0
         with self._lock:
             row = self.conn.execute(
                 """
                 SELECT v.video_id, v.title, v.channel, v.upload_date, v.local_path, v.downloaded,
-                       v.duration_seconds, v.file_size_bytes, v.watched, v.liked, v.disliked,
-                       v.rating, v.rejected_reason, v.trending_score,
+                       v.duration_seconds, v.file_size_bytes,
+                       CASE WHEN ?=1 THEN COALESCE(ps.watched, v.watched) ELSE COALESCE(ps.watched, 0) END AS watched,
+                       CASE WHEN ?=1 THEN COALESCE(ps.liked, v.liked) ELSE COALESCE(ps.liked, 0) END AS liked,
+                       CASE WHEN ?=1 THEN COALESCE(ps.disliked, v.disliked) ELSE COALESCE(ps.disliked, 0) END AS disliked,
+                       CASE WHEN ?=1 THEN COALESCE(ps.rating, v.rating) ELSE COALESCE(ps.rating, 0) END AS rating,
+                       CASE WHEN ?=1 THEN COALESCE(ps.rejected_reason, v.rejected_reason) ELSE ps.rejected_reason END AS rejected_reason,
+                       v.trending_score,
                        v.channel_preference, v.watch_score, v.source_url,
                        COALESCE(i.transcript_source, 'none') AS transcript_source,
-                       COALESCE(i.quality_score, 0.0) AS intelligence_quality
+                       COALESCE(i.quality_score, 0.0) AS intelligence_quality,
+                       COALESCE(ps.completed, 0) AS completed,
+                       COALESCE(ps.total_watch_seconds, 0) AS total_watch_seconds
                 FROM videos v
                 LEFT JOIN video_intelligence i ON i.video_id=v.video_id
+                LEFT JOIN profile_video_state ps ON ps.video_id=v.video_id AND ps.profile_id=?
                 WHERE v.video_id=?
                 """,
-                (video_id,),
+                (
+                    is_default_profile,
+                    is_default_profile,
+                    is_default_profile,
+                    is_default_profile,
+                    is_default_profile,
+                    normalized_profile,
+                    video_id,
+                ),
             ).fetchone()
         return dict(row) if row else None
 
@@ -476,9 +753,11 @@ class Database:
         pref_key: str,
         pref_value: str | None = None,
         weight: float = 1.0,
+        profile_id: str | None = None,
     ) -> None:
         now = self._utc_now()
         pref_key = pref_key.strip().lower()
+        scoped_type = f"profile:{(profile_id or self.DEFAULT_PROFILE_ID).strip().lower()}:{pref_type}" if profile_id else pref_type
         with self._lock:
             self.conn.execute(
                 """
@@ -489,15 +768,16 @@ class Database:
                     weight=excluded.weight,
                     updated_at=excluded.updated_at
                 """,
-                (pref_type, pref_key, pref_value, weight, now),
+                (scoped_type, pref_key, pref_value, weight, now),
             )
             self.conn.commit()
 
-    def get_preferences(self, pref_type: str) -> dict[str, float]:
+    def get_preferences(self, pref_type: str, profile_id: str | None = None) -> dict[str, float]:
+        scoped_type = f"profile:{(profile_id or self.DEFAULT_PROFILE_ID).strip().lower()}:{pref_type}" if profile_id else pref_type
         with self._lock:
             rows = self.conn.execute(
                 "SELECT pref_key, weight FROM preferences WHERE pref_type=?",
-                (pref_type,),
+                (scoped_type,),
             ).fetchall()
         return {str(row["pref_key"]): float(row["weight"]) for row in rows}
 
@@ -525,7 +805,8 @@ class Database:
             )
             self.conn.commit()
 
-    def fetch_history_signal(self) -> dict[str, float]:
+    def fetch_history_signal(self, profile_id: str = DEFAULT_PROFILE_ID) -> dict[str, float]:
+        normalized_profile = (profile_id or self.DEFAULT_PROFILE_ID).strip().lower() or self.DEFAULT_PROFILE_ID
         with self._lock:
             rows = self.conn.execute(
                 """
@@ -535,8 +816,10 @@ class Database:
                     + SUM(CASE WHEN completed=1 THEN 0.2 ELSE 0 END)
                     + COALESCE(AVG(rating) / 5.0, 0.0) AS signal
                 FROM watch_history
+                WHERE profile_id=?
                 GROUP BY video_id
-                """
+                """,
+                (normalized_profile,),
             ).fetchall()
         return {str(row["video_id"]): float(row["signal"] or 0.0) for row in rows}
 
@@ -592,29 +875,54 @@ class Database:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_profile_embedding_seeds(self, limit: int = 1000) -> list[dict[str, Any]]:
+    def get_profile_embedding_seeds(
+        self,
+        profile_id: str = DEFAULT_PROFILE_ID,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        normalized_profile = (profile_id or self.DEFAULT_PROFILE_ID).strip().lower() or self.DEFAULT_PROFILE_ID
+        is_default_profile = 1 if normalized_profile == self.DEFAULT_PROFILE_ID else 0
         with self._lock:
             rows = self.conn.execute(
                 """
-                SELECT v.video_id, v.watched, v.liked, v.disliked, v.rating,
-                       COALESCE(h.completed, 0) AS completed,
+                SELECT v.video_id,
+                       CASE WHEN ?=1 THEN COALESCE(ps.watched, v.watched) ELSE COALESCE(ps.watched, 0) END AS watched,
+                       CASE WHEN ?=1 THEN COALESCE(ps.liked, v.liked) ELSE COALESCE(ps.liked, 0) END AS liked,
+                       CASE WHEN ?=1 THEN COALESCE(ps.disliked, v.disliked) ELSE COALESCE(ps.disliked, 0) END AS disliked,
+                       CASE WHEN ?=1 THEN COALESCE(ps.rating, v.rating) ELSE COALESCE(ps.rating, 0) END AS rating,
+                       COALESCE(ps.completed, 0) AS completed,
                        i.embedding_json
                 FROM videos v
                 JOIN video_intelligence i ON i.video_id=v.video_id
-                LEFT JOIN (
-                    SELECT video_id, MAX(completed) AS completed
-                    FROM watch_history
-                    GROUP BY video_id
-                ) h ON h.video_id=v.video_id
-                WHERE v.watched=1 OR v.liked=1 OR v.disliked=1 OR v.rating > 0
-                ORDER BY v.updated_at DESC
+                LEFT JOIN profile_video_state ps ON ps.video_id=v.video_id AND ps.profile_id=?
+                WHERE
+                    CASE WHEN ?=1 THEN
+                        COALESCE(ps.watched, v.watched)=1 OR COALESCE(ps.liked, v.liked)=1 OR COALESCE(ps.disliked, v.disliked)=1 OR COALESCE(ps.rating, v.rating) > 0
+                    ELSE
+                        COALESCE(ps.watched, 0)=1 OR COALESCE(ps.liked, 0)=1 OR COALESCE(ps.disliked, 0)=1 OR COALESCE(ps.rating, 0) > 0
+                    END
+                ORDER BY COALESCE(ps.updated_at, v.updated_at) DESC
                 LIMIT ?
                 """,
-                (limit,),
+                (
+                    is_default_profile,
+                    is_default_profile,
+                    is_default_profile,
+                    is_default_profile,
+                    normalized_profile,
+                    is_default_profile,
+                    limit,
+                ),
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_recommendation_candidates(self, limit: int = 1000) -> list[dict[str, Any]]:
+    def get_recommendation_candidates(
+        self,
+        profile_id: str = DEFAULT_PROFILE_ID,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        normalized_profile = (profile_id or self.DEFAULT_PROFILE_ID).strip().lower() or self.DEFAULT_PROFILE_ID
+        is_default_profile = 1 if normalized_profile == self.DEFAULT_PROFILE_ID else 0
         with self._lock:
             rows = self.conn.execute(
                 """
@@ -628,21 +936,30 @@ class Database:
                     v.duration_seconds,
                     v.file_size_bytes,
                     v.trending_score,
-                    v.liked,
-                    v.disliked,
-                    v.rating,
-                    v.watched,
-                    v.rejected_reason,
+                    CASE WHEN ?=1 THEN COALESCE(ps.liked, v.liked) ELSE COALESCE(ps.liked, 0) END AS liked,
+                    CASE WHEN ?=1 THEN COALESCE(ps.disliked, v.disliked) ELSE COALESCE(ps.disliked, 0) END AS disliked,
+                    CASE WHEN ?=1 THEN COALESCE(ps.rating, v.rating) ELSE COALESCE(ps.rating, 0) END AS rating,
+                    CASE WHEN ?=1 THEN COALESCE(ps.watched, v.watched) ELSE COALESCE(ps.watched, 0) END AS watched,
+                    CASE WHEN ?=1 THEN COALESCE(ps.rejected_reason, v.rejected_reason) ELSE ps.rejected_reason END AS rejected_reason,
                     v.source_url,
                     COALESCE(i.embedding_json, '') AS embedding_json,
                     COALESCE(i.transcript_source, 'none') AS transcript_source,
                     COALESCE(i.quality_score, 0.0) AS intelligence_quality
                 FROM videos v
                 LEFT JOIN video_intelligence i ON i.video_id=v.video_id
-                ORDER BY v.updated_at DESC
+                LEFT JOIN profile_video_state ps ON ps.video_id=v.video_id AND ps.profile_id=?
+                ORDER BY COALESCE(ps.updated_at, v.updated_at) DESC
                 LIMIT ?
                 """,
-                (limit,),
+                (
+                    is_default_profile,
+                    is_default_profile,
+                    is_default_profile,
+                    is_default_profile,
+                    is_default_profile,
+                    normalized_profile,
+                    limit,
+                ),
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -657,17 +974,32 @@ class Database:
             ).fetchall()
         return {str(row["url"]) for row in rows if row["url"]}
 
-    def get_offline_inventory_stats(self) -> dict[str, int]:
+    def get_offline_inventory_stats(self, profile_id: str = DEFAULT_PROFILE_ID) -> dict[str, int]:
+        normalized_profile = (profile_id or self.DEFAULT_PROFILE_ID).strip().lower() or self.DEFAULT_PROFILE_ID
+        is_default_profile = 1 if normalized_profile == self.DEFAULT_PROFILE_ID else 0
         with self._lock:
             row = self.conn.execute(
                 """
                 SELECT
                     COUNT(*) AS total_downloaded_items,
-                    COALESCE(SUM(CASE WHEN watched=0 THEN COALESCE(duration_seconds, 0) ELSE 0 END), 0) AS unwatched_duration_seconds,
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN
+                                    (CASE WHEN ?=1 THEN COALESCE(ps.watched, videos.watched) ELSE COALESCE(ps.watched, 0) END)=0
+                                THEN COALESCE(videos.duration_seconds, 0)
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS unwatched_duration_seconds,
                     COALESCE(SUM(COALESCE(file_size_bytes, 0)), 0) AS downloaded_storage_bytes
                 FROM videos
-                WHERE downloaded=1
+                LEFT JOIN profile_video_state ps ON ps.video_id=videos.video_id AND ps.profile_id=?
+                WHERE videos.downloaded=1
                 """
+            ,
+                (is_default_profile, normalized_profile),
             ).fetchone()
         if not row:
             return {
