@@ -6,8 +6,7 @@ from typing import Any
 
 from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
-from bunkermedia.downloader import infer_target_type
-from bunkermedia.downloader import Downloader
+from bunkermedia.downloader import Downloader, infer_target_type
 from bunkermedia.intelligence import IntelligenceEngine
 from bunkermedia.metrics import MetricsRegistry
 from bunkermedia.models import VideoMetadata
@@ -31,6 +30,7 @@ class WorkerManager:
         offline_planner: Any | None = None,
         storage_policy: Any | None = None,
         import_organizer: Any | None = None,
+        import_watch_runner: Any | None = None,
     ) -> None:
         self.config = config
         self.db = db
@@ -44,6 +44,7 @@ class WorkerManager:
         self.offline_planner = offline_planner
         self.storage_policy = storage_policy
         self.import_organizer = import_organizer
+        self.import_watch_runner = import_watch_runner
         self._stop_event = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
 
@@ -75,6 +76,9 @@ class WorkerManager:
             ),
             asyncio.create_task(
                 self._interval_loop(self.process_download_queue_once, intervals.download_queue_seconds, "download_queue")
+            ),
+            asyncio.create_task(
+                self._interval_loop(self._run_import_watch, intervals.import_watch_seconds, "import_watch")
             ),
         ]
         self.logger.info("Background workers started")
@@ -135,10 +139,6 @@ class WorkerManager:
         self.metrics.inc("worker_intelligence_success_total")
 
     async def _run_recommendation_refresh(self) -> None:
-        if self.import_organizer is not None:
-            result = self.import_organizer.organize_once()
-            self.metrics.inc("worker_import_organizer_runs_total")
-            self.metrics.inc("worker_imports_organized_total", float(int(result.get("organized") or 0)))
         await self.recommender.refresh_scores()
         if self.offline_planner is not None:
             result = await self.offline_planner.plan_once()
@@ -149,6 +149,23 @@ class WorkerManager:
             self.metrics.inc("worker_storage_enforcement_total")
             self.metrics.set_gauge("worker_storage_freed_bytes_last", float(int(result.get("freed_bytes") or 0)))
         self.metrics.inc("worker_recommendation_success_total")
+
+    async def _run_import_watch(self) -> None:
+        if not self.config.auto_organize_imports or not self.config.import_watch_folders:
+            self.metrics.inc("worker_import_watch_skipped_total")
+            return
+        if self.import_watch_runner is not None:
+            result = await self.import_watch_runner()
+        elif self.import_organizer is not None:
+            result = self.import_organizer.organize_once()
+        else:
+            self.metrics.inc("worker_import_watch_skipped_total")
+            return
+
+        organized = int(result.get("organized") or 0)
+        self.metrics.inc("worker_import_watch_runs_total")
+        self.metrics.inc("worker_imports_organized_total", float(organized))
+        self.metrics.set_gauge("worker_imports_last_organized", float(organized))
 
     async def process_download_queue_once(self) -> None:
         if not await self._allow_online_sync():

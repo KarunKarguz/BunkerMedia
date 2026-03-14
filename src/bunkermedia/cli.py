@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 from bunkermedia.config import AppConfig
 from bunkermedia.maintenance import backup_state, restore_state
@@ -64,7 +65,7 @@ def _build_parser() -> argparse.ArgumentParser:
     storage_cmd = sub.add_parser("storage-enforce", help="Enforce storage budget policy")
     storage_cmd.add_argument("--json", action="store_true", help="Output JSON")
 
-    providers_cmd = sub.add_parser("providers", help="List configured source providers")
+    sub.add_parser("providers", help="List configured source providers")
 
     discover_cmd = sub.add_parser("discover", help="Discover metadata via provider")
     discover_cmd.add_argument("--provider", default="youtube")
@@ -332,7 +333,7 @@ async def _cmd_acquire(args: argparse.Namespace) -> None:
 async def _cmd_schema(args: argparse.Namespace) -> None:
     service = BunkerService(config_path=args.config)
     await service.initialize()
-    payload = {
+    payload: dict[str, Any] = {
         "schema_version": service.get_schema_version(),
         "migrations": service.list_schema_migrations(),
     }

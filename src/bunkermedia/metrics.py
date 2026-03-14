@@ -4,6 +4,7 @@ import threading
 from collections import defaultdict
 from dataclasses import dataclass
 from statistics import mean
+from typing import cast
 
 
 @dataclass(slots=True)
@@ -63,9 +64,9 @@ class MetricsRegistry:
 
     def render_prometheus(self) -> str:
         snap = self.snapshot()
-        counters = snap["counters"]
-        gauges = snap["gauges"]
-        timers = snap["timers"]
+        counters = cast(dict[str, float], snap["counters"])
+        gauges = cast(dict[str, float], snap["gauges"])
+        timers = cast(dict[str, TimerSnapshot], snap["timers"])
 
         lines: list[str] = []
         for name, value in sorted(counters.items()):

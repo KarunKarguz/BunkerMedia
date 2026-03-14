@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -13,6 +13,7 @@ class UpdateIntervals:
     playlist_sync_seconds: int = 1800
     recommendation_update_seconds: int = 900
     download_queue_seconds: int = 20
+    import_watch_seconds: int = 90
     intelligence_refresh_seconds: int = 1200
 
 
@@ -83,6 +84,7 @@ class AppConfig:
 
         intervals = UpdateIntervals(**(raw.get("update_intervals") or {}))
         server = ServerConfig(**(raw.get("server") or {}))
+        backup_value = cast(str | Path | None, raw.get("backup_path"))
 
         return cls(
             config_path=cfg_path,
@@ -116,8 +118,8 @@ class AppConfig:
             connectivity_check_timeout_seconds=float(raw.get("connectivity_check_timeout_seconds", 2.0)),
             sync_windows=list(raw.get("sync_windows", [])),
             backup_path=(
-                cls._resolve_path(base_dir, raw.get("backup_path"))
-                if raw.get("backup_path")
+                cls._resolve_path(base_dir, backup_value)
+                if backup_value
                 else cls._resolve_path(base_dir, "./backups")
             ),
             offline_target_hours=float(raw.get("offline_target_hours", 8.0)),

@@ -64,6 +64,7 @@ Use these config keys:
 - `private_storage_marker_file`
 - `import_watch_folders`
 - `auto_organize_imports`
+- `update_intervals.import_watch_seconds`
 - `import_move_mode`
 
 `sync_windows` format examples:
@@ -132,7 +133,7 @@ Drop media files into configured import folders such as:
 - `media/imports`
 - `media/nas-import`
 
-Then trigger ingest:
+The background worker can now watch these folders continuously. Manual trigger remains available:
 
 ```bash
 bunker imports-organize --json
@@ -144,7 +145,9 @@ Files are auto-classified into:
 - `media/library/video/<collection>/`
 - `media/library/audio/<collection>/`
 
-Organized folders are included in local discovery, so imported files appear in Bunku after refresh/sync.
+Organized folders are included in local discovery, so imported files appear in Bunku without waiting for a manual sync.
+
+On slower Raspberry Pi or NAS disks, increase `update_intervals.import_watch_seconds` to reduce repeated scans.
 
 ## Private Vault Mode
 
@@ -218,6 +221,7 @@ sudo systemctl start bunkermedia
 
 - GitHub workflow: `.github/workflows/release.yml`
 - Policy reference: `docs/RELEASE_POLICY.md`
+- Upgrade validation matrix: `docs/UPGRADE_VALIDATION_MATRIX.md`
 - Trigger: push tag matching `v*` (for example `v0.1.4`).
 - Actions:
   - compile and run test suite gate,

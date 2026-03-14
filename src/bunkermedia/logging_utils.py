@@ -28,6 +28,7 @@ def setup_logging(logs_dir: Path, mode: str = "text") -> logging.Logger:
     logger.setLevel(logging.INFO)
 
     mode = mode.strip().lower()
+    formatter: logging.Formatter
     if mode == "json":
         formatter = JsonFormatter(datefmt="%Y-%m-%dT%H:%M:%S")
     else:

@@ -145,7 +145,7 @@ The repo must meet a real open-source `1.0` bar.
 ### Acquisition and Library
 
 - [x] resumable batch downloads exist
-- [ ] continuous NAS/import watcher exists
+- [x] continuous NAS/import watcher exists
 - [ ] duplicate detection is strengthened across providers/imports
 - [ ] unified source prioritization and dedupe policy exists
 - [ ] richer local library classification exists
@@ -155,14 +155,14 @@ The repo must meet a real open-source `1.0` bar.
 - [x] retry/dead-letter queue exists
 - [x] offline planner exists
 - [x] storage policy exists
-- [ ] startup/upgrade validation across multiple prior DB versions exists
+- [x] startup/upgrade validation across multiple prior DB versions exists
 - [ ] long-run soak results are documented
 
 ### Public Release Engineering
 
-- [ ] `ruff` gate in CI
-- [ ] `mypy` gate in CI
-- [ ] coverage threshold in CI
+- [x] `ruff` gate in CI
+- [x] `mypy` gate in CI
+- [x] coverage threshold in CI
 - [ ] multi-arch container publishing
 - [ ] clean fresh-install verification on Linux and Raspberry Pi
 
@@ -183,14 +183,14 @@ The repo must meet a real open-source `1.0` bar.
 
 ### Track C: Acquisition and Off-Grid Appliance
 
-1. Add continuous NAS/import folder watcher.
+1. Add continuous NAS/import folder watcher. Completed in `0.2.10`.
 2. Improve duplicate detection across imports/downloads/providers.
 3. Add source-priority policy and smarter autoplay/offline autopilot rules.
 
 ### Track D: 1.0 Release Hardening
 
-1. Add `ruff`, `mypy`, and coverage gates in CI.
-2. Add migration-upgrade validation for older database states.
+1. Add `ruff`, `mypy`, and coverage gates in CI. Completed in `0.2.10`.
+2. Add migration-upgrade validation for older database states. Completed in `0.2.10`.
 3. Publish multi-arch images and verify fresh Pi/Linux installs.
 4. Document a formal `1.0` release checklist.
 
@@ -208,9 +208,10 @@ If BunkerMedia is going to be more than "yet another self-hosted media app", the
 
 These are the top blockers preventing a clean `1.0.0` release today:
 
-1. no continuous NAS watcher yet
-2. no CI quality-gate stack (`ruff` / `mypy` / coverage) yet
-3. no documented upgrade-validation matrix yet
+1. search, filters, and recommendation actions are still not fully closed for the `1.0` UX bar
+2. long-run soak results are not documented yet
+3. multi-arch container publishing is not in place yet
+4. clean fresh-install verification on Linux and Raspberry Pi is not closed yet
 
 ## After 1.0
 

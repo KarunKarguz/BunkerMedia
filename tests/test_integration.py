@@ -11,11 +11,11 @@ from bunkermedia.database import Database
 from bunkermedia.metrics import MetricsRegistry
 from bunkermedia.models import VideoMetadata
 from bunkermedia.network import NetworkStateManager
+from bunkermedia.providers.local import LocalFolderProvider
+from bunkermedia.providers.rss import RSSProvider
 from bunkermedia.server import create_app
 from bunkermedia.service import BunkerService
 from bunkermedia.workers import WorkerManager
-from bunkermedia.providers.local import LocalFolderProvider
-from bunkermedia.providers.rss import RSSProvider
 
 
 class _FakeDownloader:

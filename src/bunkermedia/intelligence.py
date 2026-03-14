@@ -9,7 +9,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from yt_dlp import YoutubeDL
+from yt_dlp import YoutubeDL  # type: ignore[import-untyped]
 
 from bunkermedia.database import Database
 

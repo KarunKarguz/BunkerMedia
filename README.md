@@ -16,6 +16,7 @@ Current maturity: `public beta`. The core platform is working, but the project i
 - Governance and support policy: `docs/GOVERNANCE.md`
 - Bunku Mode UI spec: `docs/BUNKU_MODE_UI.md`
 - Operations guide: `docs/OPERATIONS.md`
+- Upgrade validation matrix: `docs/UPGRADE_VALIDATION_MATRIX.md`
 - Release cadence policy: `docs/RELEASE_POLICY.md`
 - Security hardening checklist: `docs/SECURITY_HARDENING_CHECKLIST.md`
 - Security CI workflow: `.github/workflows/security.yml`
@@ -40,6 +41,7 @@ Current maturity: `public beta`. The core platform is working, but the project i
 - Storage budget policy with automated eviction
 - Appliance telemetry for disk, memory, load, and Pi temperature
 - NAS/local import organizer for auto-sorting dropped media files
+- Continuous NAS/import watcher with configurable scan interval and immediate local-library discovery
 - Prometheus-style metrics endpoint (`/metrics`) and queue/dead-letter observability
 - Schema migration/version tracking (`schema_migrations`)
 - Provider plugin framework with built-in `youtube` provider
@@ -68,6 +70,7 @@ Edit `config.yaml`:
 - `download_path`
 - `max_parallel_downloads`
 - `update_intervals`
+  - `import_watch_seconds`
 - `embedding_dim`
 - `intelligence_batch_size`
 - `transcript_max_chars`
@@ -204,6 +207,7 @@ Inside Bunku, TV mode is enabled by default:
 - Quick bootstrap: `deploy/raspberrypi/setup_pi.sh`
 - Pi Docker profile: `deploy/raspberrypi/docker-compose.pi.yml`
 - Use `media/nas-import` or `media/imports` as the drop folder for local/NAS ingest
+- Tune `update_intervals.import_watch_seconds` conservatively on Pi if import folders are large
 - Use the Bunku TV mode UI for keyboard/remote-first operation on HDMI-attached displays
 - For private mode, put `download_path` on an encrypted volume where possible and add the configured marker file if mount heuristics cannot confirm encryption
 

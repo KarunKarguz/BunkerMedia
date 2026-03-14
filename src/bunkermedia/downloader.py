@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from yt_dlp import YoutubeDL
+from yt_dlp import YoutubeDL  # type: ignore[import-untyped]
 
 from bunkermedia.config import AppConfig
 from bunkermedia.database import Database

@@ -1,10 +1,10 @@
-from pathlib import Path
 import asyncio
+from pathlib import Path
 
 from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
-from bunkermedia.intelligence import build_hash_embedding, cosine_similarity
 from bunkermedia.import_organizer import ImportOrganizer
+from bunkermedia.intelligence import build_hash_embedding, cosine_similarity
 from bunkermedia.maintenance import backup_state, restore_state
 from bunkermedia.models import Recommendation, VideoMetadata
 from bunkermedia.network import NetworkStateManager
@@ -199,6 +199,42 @@ def test_service_provider_registry(tmp_path: Path) -> None:
         assert "youtube" in providers
         health = service.get_health_state()
         assert int(health["schema_version"]) >= 3
+        await service.shutdown()
+
+    asyncio.run(_run())
+
+
+def test_continuous_import_watch_discovers_local_media(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.yaml"
+    import_root = tmp_path / "drop"
+    import_root.mkdir(parents=True, exist_ok=True)
+    (import_root / "arrival.mp4").write_bytes(b"media")
+
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "download_path: ./media",
+                "database_path: ./bunkermedia.db",
+                "download_archive: ./archive.txt",
+                "force_offline_mode: true",
+                "auto_start_workers: false",
+                "auto_organize_imports: true",
+                "import_watch_folders:",
+                f"  - {import_root}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    async def _run() -> None:
+        service = BunkerService(cfg_path)
+        await service.initialize()
+        await service.workers._run_import_watch()
+        visible = service.list_videos(limit=20, search="arrival")
+        assert len(visible) == 1
+        assert str(visible[0]["channel"]).lower() == "unsorted"
+        health = service.get_health_state()
+        assert health["import_watch_enabled"] is True
         await service.shutdown()
 
     asyncio.run(_run())

@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
+from bunkermedia import __version__
 from bunkermedia.service import BunkerService
 
 
@@ -91,7 +92,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         finally:
             await service.shutdown()
 
-    app = FastAPI(title="BunkerMedia", version="0.2.9", lifespan=lifespan)
+    app = FastAPI(title="BunkerMedia", version=__version__, lifespan=lifespan)
     app.state.service = service
 
     @app.middleware("http")

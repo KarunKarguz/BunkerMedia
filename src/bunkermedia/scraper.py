@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from yt_dlp import YoutubeDL
+from yt_dlp import YoutubeDL  # type: ignore[import-untyped]
 
 from bunkermedia.database import Database
 from bunkermedia.models import VideoMetadata
@@ -64,9 +64,10 @@ class Scraper:
                 source_url = f"https://www.youtube.com/watch?v={video_id}"
             upload_date = entry.get("upload_date")
             duration_seconds = None
-            if entry.get("duration") is not None:
+            raw_duration = entry.get("duration")
+            if raw_duration is not None:
                 try:
-                    duration_seconds = max(0, int(entry.get("duration")))
+                    duration_seconds = max(0, int(raw_duration))
                 except (TypeError, ValueError):
                     duration_seconds = None
 

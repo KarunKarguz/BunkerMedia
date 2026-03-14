@@ -152,7 +152,8 @@ class RSSProvider(Provider):
         ):
             try:
                 dt = parser(value)
-                return dt.strftime("%Y%m%d")
+                if dt is not None:
+                    return dt.strftime("%Y%m%d")
             except Exception:
                 continue
         return None

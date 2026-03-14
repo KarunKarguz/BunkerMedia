@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 from dataclasses import asdict
 from pathlib import Path
+from typing import cast
 
 from bunkermedia.artwork import ArtworkManager
 from bunkermedia.config import AppConfig
@@ -99,6 +100,7 @@ class BunkerService:
             self.offline_planner,
             self.storage_policy,
             self.import_organizer,
+            self.organize_imports,
         )
         self._initialized = False
 
@@ -160,8 +162,9 @@ class BunkerService:
 
         if self.config.auto_organize_imports and self.config.import_watch_folders:
             organized = await self.organize_imports()
-            if int(organized.get("organized") or 0) > 0:
-                self.metrics.inc("imports_organized_total", float(int(organized.get("organized") or 0)))
+            organized_count = self._coerce_int(organized.get("organized"))
+            if organized_count > 0:
+                self.metrics.inc("imports_organized_total", float(organized_count))
 
         if self._local_watch_folders():
             await self.discover(provider="local", source="default", limit=2000)
@@ -173,9 +176,10 @@ class BunkerService:
             self.metrics.inc("storage_enforcement_total")
 
         plan = await self.plan_offline_queue()
-        if int(plan.get("queued_jobs") or 0) > 0:
+        queued_jobs = self._coerce_int(plan.get("queued_jobs"))
+        if queued_jobs > 0:
             self.metrics.inc("offline_planner_runs_total")
-            self.metrics.inc("offline_planner_queued_jobs_total", int(plan.get("queued_jobs") or 0))
+            self.metrics.inc("offline_planner_queued_jobs_total", queued_jobs)
 
         await self.workers.process_download_queue_once()
         storage_after = self.enforce_storage_policy()
@@ -361,16 +365,19 @@ class BunkerService:
         return online
 
     async def plan_offline_queue(self) -> dict[str, object]:
-        result = await self.offline_planner.plan_once()
-        self.metrics.set_gauge("offline_available_seconds", float(int(result.get("available_seconds") or 0)))
-        self.metrics.set_gauge("offline_target_seconds", float(int(result.get("target_seconds") or 0)))
-        self.metrics.set_gauge("offline_queued_seconds_last", float(int(result.get("queued_duration_seconds") or 0)))
+        result = cast(dict[str, object], await self.offline_planner.plan_once())
+        self.metrics.set_gauge("offline_available_seconds", float(self._coerce_int(result.get("available_seconds"))))
+        self.metrics.set_gauge("offline_target_seconds", float(self._coerce_int(result.get("target_seconds"))))
+        self.metrics.set_gauge(
+            "offline_queued_seconds_last",
+            float(self._coerce_int(result.get("queued_duration_seconds"))),
+        )
         return result
 
     def enforce_storage_policy(self) -> dict[str, object]:
-        result = self.storage_policy.enforce_once()
-        self.metrics.set_gauge("storage_freed_bytes_last", float(int(result.get("freed_bytes") or 0)))
-        self.metrics.set_gauge("storage_evicted_files_last", float(int(result.get("evicted_files") or 0)))
+        result = cast(dict[str, object], self.storage_policy.enforce_once())
+        self.metrics.set_gauge("storage_freed_bytes_last", float(self._coerce_int(result.get("freed_bytes"))))
+        self.metrics.set_gauge("storage_evicted_files_last", float(self._coerce_int(result.get("evicted_files"))))
         return result
 
     def get_offline_inventory(self) -> dict[str, int]:
@@ -517,8 +524,8 @@ class BunkerService:
         return self.db.set_video_privacy(video_id, privacy_level)
 
     async def organize_imports(self) -> dict[str, object]:
-        result = self.import_organizer.organize_once()
-        if int(result.get("organized") or 0) > 0 and self._local_watch_folders():
+        result = cast(dict[str, object], self.import_organizer.organize_once())
+        if self._coerce_int(result.get("organized")) > 0 and self._local_watch_folders():
             await self.discover(provider="local", source="default", limit=2000)
         return result
 
@@ -535,6 +542,8 @@ class BunkerService:
             "active_profile": self.get_active_profile(),
             "privacy": self.get_privacy_state(),
             "system": self.get_system_state(),
+            "import_watch_enabled": bool(self.config.auto_organize_imports and self.config.import_watch_folders),
+            "import_watch_interval_seconds": int(self.config.update_intervals.import_watch_seconds),
         }
 
     def _local_watch_folders(self) -> list[Path]:
@@ -584,10 +593,14 @@ class BunkerService:
         if bool(profile.get("is_kids")) and privacy_level == "explicit":
             return False
         channel_name = self._normalize_channel_name(video.get("channel"))
-        blocked_channels = {str(item).strip().lower() for item in profile.get("blocked_channels", []) if str(item).strip()}
+        blocked_channels = {
+            item for item in self._profile_channel_entries(profile, "blocked_channels") if item
+        }
         if channel_name and channel_name in blocked_channels:
             return False
-        allow_channels = {str(item).strip().lower() for item in profile.get("allowed_channels", []) if str(item).strip()}
+        allow_channels = {
+            item for item in self._profile_channel_entries(profile, "allowed_channels") if item
+        }
         if allow_channels and (bool(profile.get("is_kids")) or bool(profile.get("can_access_private"))):
             if not channel_name or channel_name not in allow_channels:
                 return False
@@ -628,6 +641,29 @@ class BunkerService:
 
     def _normalize_channel_names(self, values: list[str]) -> list[str]:
         return sorted({self._normalize_channel_name(value) for value in values if self._normalize_channel_name(value)})
+
+    def _profile_channel_entries(self, profile: dict[str, object], key: str) -> list[str]:
+        raw = profile.get(key)
+        if not isinstance(raw, list):
+            return []
+        return [self._normalize_channel_name(item) for item in raw]
+
+    @staticmethod
+    def _coerce_int(value: object, default: int = 0) -> int:
+        try:
+            if value is None:
+                return default
+            if isinstance(value, bool):
+                return int(value)
+            if isinstance(value, int):
+                return value
+            if isinstance(value, float):
+                return int(value)
+            if isinstance(value, str):
+                return int(value)
+            return default
+        except (TypeError, ValueError):
+            return default
 
     @staticmethod
     def _public_profile(profile: dict[str, object] | None) -> dict[str, object]:

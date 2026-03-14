@@ -94,11 +94,11 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel);
                 CREATE INDEX IF NOT EXISTS idx_videos_downloaded ON videos(downloaded);
                 CREATE INDEX IF NOT EXISTS idx_jobs_status ON download_jobs(status);
-                CREATE INDEX IF NOT EXISTS idx_jobs_batch_id ON download_jobs(batch_id);
                 CREATE INDEX IF NOT EXISTS idx_history_video ON watch_history(video_id);
                 """
             )
             apply_migrations(self.conn, utc_now=self._utc_now())
+            self._ensure_optional_indexes()
             self._ensure_profile_defaults()
             self._recover_inflight_download_state()
             self.conn.commit()
@@ -131,6 +131,14 @@ class Database:
                 """,
                 (profile_id, display_name, is_kids, color, can_access_private, now, now),
             )
+
+    def _ensure_optional_indexes(self) -> None:
+        if self._table_has_column("download_jobs", "batch_id"):
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_batch_id ON download_jobs(batch_id)")
+
+    def _table_has_column(self, table: str, column: str) -> bool:
+        rows = self.conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return any(str(row["name"]) == column for row in rows)
 
     def _recover_inflight_download_state(self) -> None:
         now = self._utc_now()
@@ -550,7 +558,7 @@ class Database:
                 (url, target_type, batch_id, priority, now, now, now),
             )
             self.conn.commit()
-            return int(cursor.lastrowid)
+            return int(cursor.lastrowid or 0)
 
     def claim_pending_jobs(self, limit: int) -> list[dict[str, Any]]:
         with self._lock:
@@ -774,7 +782,7 @@ class Database:
                         now,
                     ),
                 )
-                new_job_id = int(cursor.lastrowid)
+                new_job_id = int(cursor.lastrowid or 0)
 
             self.conn.execute(
                 """
@@ -836,7 +844,7 @@ class Database:
                     """,
                     (source_url, batch_type, title, max(0, int(total_items)), job_id, now, now),
                 )
-                batch_id = int(cursor.lastrowid)
+                batch_id = int(cursor.lastrowid or 0)
             self.conn.execute(
                 """
                 UPDATE download_jobs

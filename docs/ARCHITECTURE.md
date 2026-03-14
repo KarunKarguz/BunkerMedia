@@ -16,7 +16,7 @@ BunkerMedia is organized into these runtime layers:
 - `recommender.py`: hybrid ranking and diversity reranking
 
 4. Runtime:
-- `workers.py`: background loops for sync, intelligence, recommendations, queue
+- `workers.py`: background loops for sync, intelligence, recommendations, queue, and continuous import watching
 - `service.py`: orchestration and lifecycle
 - `artwork.py`: local artwork cache, thumbnail fetch, and generated poster fallback
 - `network.py`: online/offline detection and sync-window checks
@@ -47,8 +47,9 @@ BunkerMedia is organized into these runtime layers:
 4. Artwork is served locally from cached thumbnails or generated fallback posters.
 5. Intelligence worker generates embeddings from transcript/metadata.
 6. Profile-aware policy filters remove private/explicit items for unauthorized profiles.
-7. Recommender combines preference, history, trending, semantic similarity.
-8. API and CLI expose ranked recommendations, batch state, artwork, and media playback.
+7. Continuous import watch loops organize local drops and trigger local discovery without a manual sync cycle.
+8. Recommender combines preference, history, trending, semantic similarity.
+9. API and CLI expose ranked recommendations, batch state, artwork, and media playback.
 
 ## Privacy Model
 

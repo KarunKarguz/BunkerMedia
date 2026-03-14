@@ -7,6 +7,20 @@
 - Reassessed the product roadmap around a real `1.0` bar for a privacy-first local OTT appliance.
 - Added a dedicated product strategy document to clarify positioning, user types, principles, and release scope.
 
+## [0.2.10] - 2026-03-14
+
+### Added
+
+- Continuous NAS/import watcher loop with a dedicated `update_intervals.import_watch_seconds` schedule.
+- Automated upgrade validation matrix document and test coverage across historical schema states `0` through `7`.
+- CI quality gate stack with `ruff`, `mypy`, and coverage enforcement.
+
+### Changed
+
+- Import organization now triggers local-library discovery through the background watcher instead of waiting for a manual sync cycle.
+- Release workflow now runs the same lint/type/coverage quality gates before packaging artifacts.
+- Roadmap now treats continuous NAS watching, CI quality gates, and upgrade validation as complete `1.0` hardening items.
+
 ## [0.2.9] - 2026-03-14
 
 ### Added

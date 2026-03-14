@@ -11,6 +11,7 @@ update_intervals:
   playlist_sync_seconds: 1800
   recommendation_update_seconds: 900
   download_queue_seconds: 20
+  import_watch_seconds: 90
   intelligence_refresh_seconds: 1200
 channel_feeds: []
 playlist_feeds: []
