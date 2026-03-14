@@ -1,185 +1,232 @@
-# BunkerMedia Product Roadmap
+# BunkerMedia 1.0 Roadmap Reassessment
 
-BunkerMedia is evolving toward a complete local-first home media system.
+BunkerMedia is not just a downloader plus player. The `1.0` target is a privacy-first local OTT appliance: a self-hosted, LAN-native media system that feels closer to a personal Netflix than a toolbox.
 
-## Product Vision
+## Product North Star
 
-BunkerMedia should feel like an offline-first "local Netflix" for self-hosters:
+BunkerMedia should become `LocalOTT`:
 
-- Works fully on LAN without internet.
-- Automatically syncs and curates when internet is available.
-- Learns user interests and feedback signals.
-- Pre-downloads relevant content in the background.
+- fully useful on a home LAN with no internet,
+- privacy-first by default,
+- optimized for Raspberry Pi and low-power Linux boxes,
+- opinionated enough to feel like a real consumer product,
+- open enough for public self-hosters and contributors.
 
-## Source Policy (Public OSS Requirement)
+## Product Promise
 
-To keep this project safe and maintainable for public open-source use, provider integrations must target:
+For `1.0`, a household user should be able to:
 
-- user-owned content,
-- publicly available/free-to-access content,
-- or sources users are authorized to access.
+1. open one local URL on TV, phone, tablet, or laptop,
+2. browse a polished local catalog,
+3. watch smoothly with per-profile progress and recommendations,
+4. trust that private media stays hidden behind local controls,
+5. trust that downloads, imports, retries, and offline caching continue in the background,
+6. operate the system as an appliance, not as a development project.
 
-No built-in piracy-focused workflows will be added.
+## Scope Boundaries
 
-## Current State Snapshot
+To keep the public OSS project safe and maintainable:
 
-### Completed
+- built-in providers must target authorized, public, or user-owned content,
+- no piracy-focused workflows will be added to core,
+- no DRM or cloud trust model is part of `1.0`,
+- no default heavy transcoding pipeline is required for `1.0`,
+- internet-facing auth is not a `1.0` requirement if the primary deployment remains LAN-first.
 
-- Downloader with dedupe archive and queue workers.
-- Scraper for trending/channel/playlist metadata.
-- SQLite metadata, watch history, preferences.
-- Transcript+metadata intelligence embeddings.
-- Hybrid recommendation engine with explain mode.
-- Retry backoff + dead-letter queue.
-- FastAPI server and CLI surface.
-- Appliance dashboard with queue/offline/storage/system telemetry.
-- Raspberry Pi deployment preset and bootstrap assets.
-- NAS/local import organization and managed library ingest.
-- TV-mode Bunku UI with keyboard/D-pad navigation and inline playback.
-- Private-vault mode with encrypted-storage health detection and PIN-protected profiles.
+## Current Assessment
 
-### Key Gaps to "Complete Home Media Server"
+### Already strong
 
-- Multi-provider ingestion plugin architecture.
-- Deeper Bunku controls (bulk queue hygiene, richer feedback actions, library polish).
-- Multi-user profile and parental mode support beyond the current private-vault baseline.
-- More robust recommendation feedback loops and autopilot policies.
-- Full observability, backups, and upgrade tooling.
+- download queue, retries, dead letters, and resumable batch recovery
+- SQLite metadata, migrations, backups, and restore flow
+- YouTube/RSS/local providers
+- recommendation engine and offline planner
+- Pi-friendly deployment profile
+- Bunku UI with TV mode, PWA shell, profiles, and private-vault controls
+- encrypted-storage-aware privacy model
 
-## Phase A: MVP Baseline (Now -> v0.2)
+### Not yet `1.0`
 
-### Objective
+The project is currently closer to a strong public beta than a final `1.0` product.
 
-Solid single-user CLI/API with stable acquisition and ranking.
+Main reasons:
 
-### Scope
+- the OTT experience is functional but not yet premium,
+- parental and private-vault controls need hardening,
+- metadata enrichment and catalog presentation are still incomplete,
+- CI quality gates and release validation are not yet strict enough,
+- the roadmap has been phase-driven, but `1.0` needs to be release-bar driven.
 
-- [x] Download queue + retry/dead-letter.
-- [x] Recommendation explainability.
-- [x] Metrics endpoint (queue depth, retries, dead-letter, recommendation latency).
-- [x] Structured log mode (JSON).
-- [x] Backup/restore for DB/archive state.
-- [x] Integration tests for queue/reco/api flow.
+## 1.0 Product Pillars
 
-### Exit Criteria
+### Pillar 1: LocalOTT User Experience
 
-- 24h soak test without worker crashes.
-- Dead-letter flows recoverable via CLI/API.
-- Basic metrics visible from one endpoint.
+The system must feel like a local streaming product, not an admin dashboard.
 
-## Phase B: Off-Grid Readiness (v0.3)
+`1.0` requirements:
 
-### Objective
+- polished home screen rails
+- rich media cards with poster/thumb artwork
+- fullscreen-first playback flow
+- continue-watching per profile
+- strong TV remote / keyboard navigation
+- mobile and tablet LAN usability
+- recommendation explanations available but non-intrusive
 
-Usable in intermittent/no-internet environments.
+### Pillar 2: Privacy-First Household Use
 
-### Scope
+The system must support family/shared-home use without weakening local privacy.
 
-- [x] Network state detector (offline/online transitions).
-- [x] Sync windows and bandwidth-aware scheduling.
-- [x] Download planner for "offline horizon" (e.g., next 3 days).
-- [x] Storage budget policies (keep/watch/evict strategy).
-- [x] Resumable background download batches.
+`1.0` requirements:
 
-### Exit Criteria
+- vault-capable profiles
+- PIN-protected profile switching
+- kids mode with stronger allow/block behavior
+- private and explicit content hidden from unauthorized profiles
+- encrypted storage verification surfaced clearly in the UI
+- no external telemetry by default
 
-- System continues serving and ranking with internet disconnected.
-- On reconnect, system performs staged sync and resumes queue automatically.
-- User can configure storage cap and offline target hours.
+### Pillar 3: Reliable Off-Grid Media Acquisition
 
-## Phase C: Bunku Mode UI (v0.4)
+The system must remain useful when connectivity is poor or unavailable.
 
-### Objective
+`1.0` requirements:
 
-Deliver a local "Bunker Mode Netflix" interface for family-friendly usage.
+- resumable playlist/channel/trending batch downloads
+- offline watch-horizon planning
+- storage-budget enforcement
+- continuous local/NAS ingest
+- queue retry and recovery across restarts
+- staged sync when network returns
 
-### Scope
+### Pillar 4: Library Intelligence and Organization
 
-- [x] Web UI shell with TV-friendly browsing.
-- [x] Home screen rails: Continue Watching, Downloaded, Recommended, New.
-- [x] Search from the UI.
-- [x] Filters (duration, channel, freshness, downloaded-only).
-- [x] Inline playback modal with keyboard/D-pad friendly controls.
-- [x] Recommendation cards with "Why this" explanation.
-- [ ] Feedback controls: Like, Dislike, Not Interested, Hide Channel.
-- [x] Queue controls: add source, sync, offline top-up, storage cleanup, retry dead-letter.
-- [x] Queue controls: Prioritize and Pause/Resume.
-- [x] Profile switcher with kids mode.
-- [x] Installable mobile/TV app shell (manifest + service worker).
-- [x] Private-vault controls with profile PIN support and encrypted-storage health.
-- [x] Queue controls: Clear Failed.
+The catalog must become easier to browse and more meaningful than a raw file list.
 
-### Exit Criteria
+`1.0` requirements:
 
-- User can operate without CLI for common tasks.
-- End-to-end playback and queue ops from UI only.
-- UI responsive on desktop/mobile LAN clients.
+- richer library classification
+- movie/show/episode heuristics for local imports
+- channel/topic grouping
+- artwork and preview metadata caching
+- duplicate awareness across imports and downloads
 
-## Phase D: Multi-Source Acquisition (v0.5)
+### Pillar 5: Public OSS Release Quality
 
-### Objective
+The repo must meet a real open-source `1.0` bar.
 
-Support pluggable acquisition from multiple authorized sources.
+`1.0` requirements:
 
-### Scope
+- clean install and upgrade path
+- migration validation from prior schema versions
+- multi-arch distribution artifacts
+- enforced lint/type/test gates
+- release notes, governance, security checklist, and ops docs kept current
 
-- [x] Provider interface: discover/metadata/download methods.
-- [x] Built-in providers: YouTube, RSS/video feeds, local watch folders.
-- [ ] Optional community provider adapters via plugin registry.
-- [ ] Unified source priority and dedupe strategy.
+## 1.0 Release Bar
 
-### Exit Criteria
+`1.0` is complete only when all sections below are true.
 
-- New provider can be added without touching core queue engine.
-- Same recommendation pipeline works across providers.
+### UX and Playback
 
-## Phase E: Emotion/Intent-Aware Personalization (v0.6)
+- [ ] poster/thumb enrichment exists and is cached locally
+- [ ] fullscreen playback flow exists in Bunku
+- [ ] continue-watching is prominent and profile-aware
+- [ ] TV remote / keyboard flow is stable on couch-distance displays
+- [ ] search, filters, and recommendation actions are complete in the UI
 
-### Objective
+### Privacy and Household Controls
 
-Track user intent and sentiment-like signals responsibly.
+- [ ] PIN rotation/change flow exists
+- [ ] kids mode supports explicit allow/block controls
+- [ ] vault state is visible and understandable from the UI
+- [ ] private/explicit media cannot leak through search, rails, recommendations, or direct stream access
 
-### Scope
+### Acquisition and Library
 
-- [ ] Add explicit intent signals in feedback (`focus`, `relax`, `learn`, `entertain`).
-- [ ] Session-level mood tags (manual opt-in, privacy-first).
-- [ ] Context-aware ranking profiles (time-of-day, session type).
-- [ ] "Autopilot" mode: selected interests are auto-queued for background download.
+- [x] resumable batch downloads exist
+- [ ] continuous NAS/import watcher exists
+- [ ] duplicate detection is strengthened across providers/imports
+- [ ] unified source prioritization and dedupe policy exists
+- [ ] richer local library classification exists
 
-### Exit Criteria
+### Reliability and Offline Operation
 
-- Recommendations adapt by selected intent profile.
-- Autopilot queue behavior is deterministic and auditable.
-- All sensitive personalization toggles are opt-in and reversible.
+- [x] retry/dead-letter queue exists
+- [x] offline planner exists
+- [x] storage policy exists
+- [ ] startup/upgrade validation across multiple prior DB versions exists
+- [ ] long-run soak results are documented
 
-## Phase F: v1.0 Public Release
+### Public Release Engineering
 
-### Objective
+- [ ] `ruff` gate in CI
+- [ ] `mypy` gate in CI
+- [ ] coverage threshold in CI
+- [ ] multi-arch container publishing
+- [ ] clean fresh-install verification on Linux and Raspberry Pi
 
-Production-grade open-source release for broad self-hosting.
+## Execution Plan to Reach 1.0
 
-### Scope
+### Track A: OTT Polish
 
-- [x] Migration system and compatibility guarantees.
-- [x] Backups, restore verification, and disaster recovery guide.
-- [x] Docker Compose and systemd deployment profiles.
-- [x] Security hardening checklist.
-- [x] Release workflow automation (tag-based build and GitHub release).
-- [x] Maintainer release cadence policy.
+1. Add poster/thumb enrichment and local artwork cache.
+2. Add fullscreen playback and stronger focus-memory behavior.
+3. Add recommendation actions: `not interested`, `hide channel`.
+4. Improve continue-watching and per-profile shelves.
 
-### Exit Criteria
+### Track B: Privacy and Family Controls
 
-- Versioned upgrade path across minor releases.
-- One-command deploy for Linux and Raspberry Pi profiles.
-- Published governance and support expectations.
+1. Add PIN rotation/change flow.
+2. Add channel allow/block controls for kids mode and vault profiles.
+3. Surface clearer vault-health messaging in Bunku.
 
-### Status
+### Track C: Acquisition and Off-Grid Appliance
 
-- v1.0 core platform baseline complete.
+1. Add continuous NAS/import folder watcher.
+2. Improve duplicate detection across imports/downloads/providers.
+3. Add source-priority policy and smarter autoplay/offline autopilot rules.
 
-## Next 4-Week Execution Plan
+### Track D: 1.0 Release Hardening
 
-1. Harden private-vault workflows with profile PIN rotation and explicit allow/block controls.
-2. Add richer feedback actions (`not interested`, `hide channel`) and intent presets.
-3. Add poster/thumb enrichment and richer media classification.
-4. Add community provider adapter registry and validation policy.
+1. Add `ruff`, `mypy`, and coverage gates in CI.
+2. Add migration-upgrade validation for older database states.
+3. Publish multi-arch images and verify fresh Pi/Linux installs.
+4. Document a formal `1.0` release checklist.
+
+## Best-In-Class Differentiators
+
+If BunkerMedia is going to be more than "yet another self-hosted media app", these are the differentiators to keep:
+
+- LAN-first and offline-first, not cloud-first
+- privacy model grounded in encrypted local storage and profile isolation
+- Pi-friendly and low-power aware
+- intelligent acquisition instead of passive file serving only
+- one local web app that works across TV, mobile, and desktop
+
+## Explicit `1.0` Blockers Right Now
+
+These are the top blockers preventing a clean `1.0.0` release today:
+
+1. no artwork/poster enrichment pipeline yet
+2. no fullscreen-first premium playback flow yet
+3. no PIN rotation or stronger parental allow/block controls yet
+4. no continuous NAS watcher yet
+5. no CI quality-gate stack (`ruff` / `mypy` / coverage) yet
+6. no documented upgrade-validation matrix yet
+
+## After 1.0
+
+These are valid post-`1.0` opportunities, but they should not block the release:
+
+- casting integrations
+- optional mobile companion flows
+- plugin registry with community adapters
+- deeper intent/mood models
+- optional transcoding or storage optimization profiles
+
+## Status
+
+Current status: `public beta`, not `1.0`.
+
+The core platform is real. The `1.0` work now is about turning it into a polished, household-ready, privacy-first local OTT product.

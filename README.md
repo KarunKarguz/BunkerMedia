@@ -2,12 +2,15 @@
 
 BunkerMedia is a self-hosted intelligent media acquisition and streaming system designed for Linux, WSL, and Raspberry Pi.
 
+Current maturity: `public beta`. The core platform is working, but the project is not claiming `1.0.0` yet. The current `1.0` bar is defined in `ROADMAP.md` and `docs/PRODUCT_STRATEGY.md`.
+
 ## Project Status
 
 - Roadmap: `ROADMAP.md`
 - Contributing guide: `CONTRIBUTING.md`
 - Security policy: `SECURITY.md`
 - Architecture notes: `docs/ARCHITECTURE.md`
+- Product strategy: `docs/PRODUCT_STRATEGY.md`
 - Product requirements: `docs/SRS.md`
 - System design spec: `docs/SDS.md`
 - Governance and support policy: `docs/GOVERNANCE.md`

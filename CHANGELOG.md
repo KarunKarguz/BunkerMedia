@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Reassessed the product roadmap around a real `1.0` bar for a privacy-first local OTT appliance.
+- Added a dedicated product strategy document to clarify positioning, user types, principles, and release scope.
+
 ## [0.2.6] - 2026-03-14
 
 ### Added
