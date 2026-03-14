@@ -33,6 +33,11 @@ def _build_parser() -> argparse.ArgumentParser:
     jobs_cmd.add_argument("--status", default=None, choices=["pending", "processing", "done", "failed", "dead"])
     jobs_cmd.add_argument("--limit", type=int, default=50)
 
+    batches_cmd = sub.add_parser("batches", help="Inspect resumable download batches")
+    batches_cmd.add_argument("--status", default=None, choices=["queued", "running", "partial", "completed", "failed"])
+    batches_cmd.add_argument("--limit", type=int, default=50)
+    batches_cmd.add_argument("--json", action="store_true", help="Output JSON")
+
     dead_cmd = sub.add_parser("deadletters", help="Inspect dead-letter download jobs")
     dead_cmd.add_argument("--limit", type=int, default=50)
 
@@ -128,6 +133,24 @@ async def _cmd_jobs(args: argparse.Namespace) -> None:
     await service.shutdown()
 
 
+async def _cmd_batches(args: argparse.Namespace) -> None:
+    service = BunkerService(config_path=args.config)
+    await service.initialize()
+    batches = service.list_download_batches(status=args.status, limit=args.limit)
+    if args.json:
+        print(json.dumps(batches, separators=(",", ":"), ensure_ascii=True))
+    elif not batches:
+        print("No download batches found")
+    else:
+        for batch in batches:
+            print(
+                f"{batch['id']} | {batch['status']} | {batch['batch_type']} | "
+                f"{batch['completed_items']}/{batch['total_items']} done | resumes={batch['resumed_runs']} | "
+                f"{batch['source_url']}"
+            )
+    await service.shutdown()
+
+
 async def _cmd_deadletters(args: argparse.Namespace) -> None:
     service = BunkerService(config_path=args.config)
     await service.initialize()
@@ -191,6 +214,8 @@ async def _cmd_status(args: argparse.Namespace) -> None:
     status["jobs_pending"] = len(service.list_download_jobs(status="pending", limit=5000))
     status["jobs_processing"] = len(service.list_download_jobs(status="processing", limit=5000))
     status["jobs_dead"] = len(service.list_download_jobs(status="dead", limit=5000))
+    status["batches_running"] = len(service.list_download_batches(status="running", limit=5000))
+    status["batches_partial"] = len(service.list_download_batches(status="partial", limit=5000))
     status["deadletters"] = len(service.list_dead_letter_jobs(limit=5000))
     status["offline_inventory"] = service.get_offline_inventory()
     if args.json:
@@ -204,6 +229,8 @@ async def _cmd_status(args: argparse.Namespace) -> None:
             "jobs_pending",
             "jobs_processing",
             "jobs_dead",
+            "batches_running",
+            "batches_partial",
             "deadletters",
         ]:
             print(f"{key}: {status[key]}")
@@ -350,6 +377,9 @@ def main() -> None:
         return
     if args.command == "jobs":
         asyncio.run(_cmd_jobs(args))
+        return
+    if args.command == "batches":
+        asyncio.run(_cmd_batches(args))
         return
     if args.command == "deadletters":
         asyncio.run(_cmd_deadletters(args))

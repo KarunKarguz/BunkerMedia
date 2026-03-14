@@ -80,6 +80,7 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     url TEXT NOT NULL,
                     target_type TEXT DEFAULT 'auto',
+                    batch_id INTEGER,
                     status TEXT DEFAULT 'pending',
                     priority INTEGER DEFAULT 0,
                     attempts INTEGER DEFAULT 0,
@@ -91,11 +92,13 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel);
                 CREATE INDEX IF NOT EXISTS idx_videos_downloaded ON videos(downloaded);
                 CREATE INDEX IF NOT EXISTS idx_jobs_status ON download_jobs(status);
+                CREATE INDEX IF NOT EXISTS idx_jobs_batch_id ON download_jobs(batch_id);
                 CREATE INDEX IF NOT EXISTS idx_history_video ON watch_history(video_id);
                 """
             )
             apply_migrations(self.conn, utc_now=self._utc_now())
             self._ensure_profile_defaults()
+            self._recover_inflight_download_state()
             self.conn.commit()
 
     @staticmethod
@@ -126,6 +129,25 @@ class Database:
                 """,
                 (profile_id, display_name, is_kids, color, can_access_private, now, now),
             )
+
+    def _recover_inflight_download_state(self) -> None:
+        now = self._utc_now()
+        self.conn.execute(
+            """
+            UPDATE download_jobs
+            SET status='pending', updated_at=?
+            WHERE status='processing'
+            """,
+            (now,),
+        )
+        self.conn.execute(
+            """
+            UPDATE download_batches
+            SET status='queued', updated_at=?
+            WHERE status='running'
+            """,
+            (now,),
+        )
 
     def list_profiles(self) -> list[dict[str, Any]]:
         active_profile_id = self.get_active_profile_id()
@@ -478,7 +500,7 @@ class Database:
             )
             self.conn.commit()
 
-    def queue_download(self, url: str, target_type: str = "auto", priority: int = 0) -> int:
+    def queue_download(self, url: str, target_type: str = "auto", priority: int = 0, batch_id: int | None = None) -> int:
         now = self._utc_now()
         with self._lock:
             existing = self.conn.execute(
@@ -495,11 +517,11 @@ class Database:
             cursor = self.conn.execute(
                 """
                 INSERT INTO download_jobs (
-                    url, target_type, status, priority, attempts, next_run_at, added_at, updated_at
+                    url, target_type, batch_id, status, priority, attempts, next_run_at, added_at, updated_at
                 )
-                VALUES (?, ?, 'pending', ?, 0, ?, ?, ?)
+                VALUES (?, ?, ?, 'pending', ?, 0, ?, ?, ?)
                 """,
-                (url, target_type, priority, now, now, now),
+                (url, target_type, batch_id, priority, now, now, now),
             )
             self.conn.commit()
             return int(cursor.lastrowid)
@@ -509,7 +531,7 @@ class Database:
             now = self._utc_now()
             rows = self.conn.execute(
                 """
-                SELECT id, url, target_type, status, priority, attempts, next_run_at
+                SELECT id, url, target_type, batch_id, status, priority, attempts, next_run_at
                 FROM download_jobs
                 WHERE status='pending' AND (next_run_at IS NULL OR next_run_at <= ?)
                 ORDER BY priority DESC, id ASC
@@ -608,7 +630,7 @@ class Database:
         with self._lock:
             row = self.conn.execute(
                 """
-                SELECT id, url, target_type, priority, attempts
+                SELECT id, url, target_type, batch_id, priority, attempts
                 FROM download_jobs
                 WHERE id=?
                 """,
@@ -620,13 +642,14 @@ class Database:
             self.conn.execute(
                 """
                 INSERT INTO dead_letter_jobs (
-                    original_job_id, url, target_type, priority, attempts, last_error, failed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    original_job_id, url, target_type, batch_id, priority, attempts, last_error, failed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     int(row["id"]),
                     str(row["url"]),
                     str(row["target_type"]),
+                    int(row["batch_id"]) if row["batch_id"] is not None else None,
                     int(row["priority"]),
                     int(row["attempts"]),
                     error,
@@ -645,7 +668,7 @@ class Database:
 
     def list_download_jobs(self, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         query = """
-            SELECT id, url, target_type, status, priority, attempts, next_run_at,
+            SELECT id, url, target_type, batch_id, status, priority, attempts, next_run_at,
                    last_error, added_at, updated_at
             FROM download_jobs
         """
@@ -663,7 +686,7 @@ class Database:
         with self._lock:
             rows = self.conn.execute(
                 """
-                SELECT id, original_job_id, url, target_type, priority, attempts,
+                SELECT id, original_job_id, url, target_type, batch_id, priority, attempts,
                        last_error, failed_at, retried_at
                 FROM dead_letter_jobs
                 ORDER BY id DESC
@@ -688,7 +711,7 @@ class Database:
         with self._lock:
             row = self.conn.execute(
                 """
-                SELECT id, url, target_type, priority
+                SELECT id, url, target_type, batch_id, priority
                 FROM dead_letter_jobs
                 WHERE id=?
                 """,
@@ -712,12 +735,13 @@ class Database:
                 cursor = self.conn.execute(
                     """
                     INSERT INTO download_jobs (
-                        url, target_type, status, priority, attempts, next_run_at, added_at, updated_at
-                    ) VALUES (?, ?, 'pending', ?, 0, ?, ?, ?)
+                        url, target_type, batch_id, status, priority, attempts, next_run_at, added_at, updated_at
+                    ) VALUES (?, ?, ?, 'pending', ?, 0, ?, ?, ?)
                     """,
                     (
                         str(row["url"]),
                         str(row["target_type"]),
+                        int(row["batch_id"]) if row["batch_id"] is not None else None,
                         int(row["priority"]),
                         now,
                         now,
@@ -736,6 +760,243 @@ class Database:
             )
             self.conn.commit()
             return new_job_id
+
+    def start_or_resume_download_batch(
+        self,
+        source_url: str,
+        batch_type: str,
+        title: str | None,
+        total_items: int,
+        job_id: int,
+    ) -> int:
+        now = self._utc_now()
+        with self._lock:
+            row = self.conn.execute(
+                """
+                SELECT id, status, resumed_runs
+                FROM download_batches
+                WHERE source_url=? AND batch_type=? AND status IN ('queued', 'running', 'partial', 'failed')
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (source_url, batch_type),
+            ).fetchone()
+            if row:
+                batch_id = int(row["id"])
+                resumed_runs = int(row["resumed_runs"] or 0)
+                if str(row["status"]) in {"partial", "failed", "queued"}:
+                    resumed_runs += 1
+                self.conn.execute(
+                    """
+                    UPDATE download_batches
+                    SET title=COALESCE(?, title),
+                        status='running',
+                        total_items=?,
+                        last_error=NULL,
+                        last_job_id=?,
+                        resumed_runs=?,
+                        updated_at=?
+                    WHERE id=?
+                    """,
+                    (title, max(0, int(total_items)), job_id, resumed_runs, now, batch_id),
+                )
+            else:
+                cursor = self.conn.execute(
+                    """
+                    INSERT INTO download_batches (
+                        source_url, batch_type, title, status, total_items,
+                        completed_items, failed_items, resumed_runs, last_error, last_job_id, created_at, updated_at
+                    ) VALUES (?, ?, ?, 'running', ?, 0, 0, 0, NULL, ?, ?, ?)
+                    """,
+                    (source_url, batch_type, title, max(0, int(total_items)), job_id, now, now),
+                )
+                batch_id = int(cursor.lastrowid)
+            self.conn.execute(
+                """
+                UPDATE download_jobs
+                SET batch_id=?, updated_at=?
+                WHERE id=?
+                """,
+                (batch_id, now, job_id),
+            )
+            self.conn.commit()
+            return batch_id
+
+    def upsert_download_batch_items(self, batch_id: int, items: list[VideoMetadata]) -> None:
+        now = self._utc_now()
+        with self._lock:
+            for position, item in enumerate(items, start=1):
+                source_url = str(item.source_url) if item.source_url else None
+                existing = self.conn.execute(
+                    """
+                    SELECT status, local_path
+                    FROM download_batch_items
+                    WHERE batch_id=? AND video_id=?
+                    """,
+                    (batch_id, item.video_id),
+                ).fetchone()
+                status = str(existing["status"]) if existing and existing["status"] else "pending"
+                local_path = str(existing["local_path"]) if existing and existing["local_path"] else None
+                item_index = item.playlist_index if item.playlist_index is not None else position
+                self.conn.execute(
+                    """
+                    INSERT INTO download_batch_items (
+                        batch_id, video_id, title, source_url, item_index, status, local_path, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(batch_id, video_id) DO UPDATE SET
+                        title=excluded.title,
+                        source_url=COALESCE(excluded.source_url, download_batch_items.source_url),
+                        item_index=CASE
+                            WHEN download_batch_items.item_index IS NULL OR download_batch_items.item_index=0
+                            THEN excluded.item_index
+                            ELSE download_batch_items.item_index
+                        END,
+                        status=CASE
+                            WHEN download_batch_items.status='done' THEN 'done'
+                            ELSE excluded.status
+                        END,
+                        local_path=COALESCE(download_batch_items.local_path, excluded.local_path),
+                        updated_at=excluded.updated_at
+                    """,
+                    (
+                        batch_id,
+                        item.video_id,
+                        item.title,
+                        source_url,
+                        max(0, int(item_index or position)),
+                        status if status == "done" else "pending",
+                        local_path,
+                        now,
+                    ),
+                )
+            self.conn.commit()
+
+    def reconcile_download_batch(self, batch_id: int) -> dict[str, Any] | None:
+        now = self._utc_now()
+        with self._lock:
+            self.conn.execute(
+                """
+                UPDATE download_batch_items
+                SET status='done',
+                    local_path=COALESCE(local_path, (
+                        SELECT videos.local_path FROM videos WHERE videos.video_id=download_batch_items.video_id
+                    )),
+                    updated_at=?
+                WHERE batch_id=? AND video_id IN (
+                    SELECT video_id FROM videos WHERE downloaded=1
+                )
+                """,
+                (now, batch_id),
+            )
+            row = self.conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_items,
+                    COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END), 0) AS completed_items,
+                    COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END), 0) AS failed_items
+                FROM download_batch_items
+                WHERE batch_id=?
+                """,
+                (batch_id,),
+            ).fetchone()
+            if not row:
+                return None
+            total_items = int(row["total_items"] or 0)
+            completed_items = int(row["completed_items"] or 0)
+            failed_items = int(row["failed_items"] or 0)
+            pending_items = max(0, total_items - completed_items - failed_items)
+            self.conn.execute(
+                """
+                UPDATE download_batches
+                SET total_items=?,
+                    completed_items=?,
+                    failed_items=?,
+                    updated_at=?
+                WHERE id=?
+                """,
+                (total_items, completed_items, failed_items, now, batch_id),
+            )
+            self.conn.commit()
+        batch = self.get_download_batch(batch_id)
+        if batch is None:
+            return None
+        batch["pending_items"] = pending_items
+        return batch
+
+    def mark_download_batch_status(self, batch_id: int, status: str, last_error: str | None = None) -> bool:
+        normalized = status.strip().lower()
+        if normalized not in {"queued", "running", "partial", "completed", "failed"}:
+            normalized = "queued"
+        with self._lock:
+            cursor = self.conn.execute(
+                """
+                UPDATE download_batches
+                SET status=?, last_error=?, updated_at=?
+                WHERE id=?
+                """,
+                (normalized, last_error, self._utc_now(), batch_id),
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
+
+    def mark_batch_item_done(self, batch_id: int, video_id: str, local_path: str | None = None) -> bool:
+        with self._lock:
+            cursor = self.conn.execute(
+                """
+                UPDATE download_batch_items
+                SET status='done', local_path=COALESCE(?, local_path), last_error=NULL, updated_at=?
+                WHERE batch_id=? AND video_id=?
+                """,
+                (local_path, self._utc_now(), batch_id, video_id),
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
+
+    def list_download_batches(self, limit: int = 100, status: str | None = None) -> list[dict[str, Any]]:
+        query = """
+            SELECT id, source_url, batch_type, title, status, total_items,
+                   completed_items, failed_items, resumed_runs, last_error,
+                   last_job_id, created_at, updated_at
+            FROM download_batches
+        """
+        params: list[Any] = []
+        if status:
+            query += " WHERE status=? "
+            params.append(status)
+        query += " ORDER BY updated_at DESC, id DESC LIMIT ?"
+        params.append(limit)
+        with self._lock:
+            rows = self.conn.execute(query, tuple(params)).fetchall()
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            total = int(item.get("total_items") or 0)
+            completed = int(item.get("completed_items") or 0)
+            failed = int(item.get("failed_items") or 0)
+            item["pending_items"] = max(0, total - completed - failed)
+            result.append(item)
+        return result
+
+    def get_download_batch(self, batch_id: int) -> dict[str, Any] | None:
+        with self._lock:
+            row = self.conn.execute(
+                """
+                SELECT id, source_url, batch_type, title, status, total_items,
+                       completed_items, failed_items, resumed_runs, last_error,
+                       last_job_id, created_at, updated_at
+                FROM download_batches
+                WHERE id=?
+                """,
+                (batch_id,),
+            ).fetchone()
+        if not row:
+            return None
+        batch = dict(row)
+        total = int(batch.get("total_items") or 0)
+        completed = int(batch.get("completed_items") or 0)
+        failed = int(batch.get("failed_items") or 0)
+        batch["pending_items"] = max(0, total - completed - failed)
+        return batch
 
     def list_videos(
         self,

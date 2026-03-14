@@ -193,6 +193,12 @@ class BunkerService:
     def list_download_jobs(self, status: str | None = None, limit: int = 100):
         return self.db.list_download_jobs(status=status, limit=limit)
 
+    def list_download_batches(self, status: str | None = None, limit: int = 100):
+        return self.db.list_download_batches(limit=limit, status=status)
+
+    def get_download_batch(self, batch_id: int):
+        return self.db.get_download_batch(batch_id)
+
     def list_dead_letter_jobs(self, limit: int = 100):
         return self.db.list_dead_letter_jobs(limit=limit)
 
@@ -439,6 +445,8 @@ class BunkerService:
             "in_sync_window": self.network.in_sync_window(),
             "schema_version": self.db.get_schema_version(),
             "providers": self.list_providers(),
+            "batches_active": len(self.db.list_download_batches(limit=5000, status="running")),
+            "batches_partial": len(self.db.list_download_batches(limit=5000, status="partial")),
             "offline_inventory": self.get_offline_inventory(),
             "active_profile": self.get_active_profile(),
             "privacy": self.get_privacy_state(),
@@ -461,6 +469,8 @@ class BunkerService:
         self.metrics.set_gauge("queue_processing", float(len(self.db.list_download_jobs(status="processing", limit=5000))))
         self.metrics.set_gauge("queue_dead", float(len(self.db.list_download_jobs(status="dead", limit=5000))))
         self.metrics.set_gauge("deadletter_items", float(len(self.db.list_dead_letter_jobs(limit=5000))))
+        self.metrics.set_gauge("download_batches_running", float(len(self.db.list_download_batches(limit=5000, status="running"))))
+        self.metrics.set_gauge("download_batches_partial", float(len(self.db.list_download_batches(limit=5000, status="partial"))))
         self.metrics.set_gauge("schema_version", float(self.db.get_schema_version()))
         return self.metrics.render_prometheus()
 

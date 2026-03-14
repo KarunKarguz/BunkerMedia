@@ -12,6 +12,7 @@ from bunkermedia.metrics import MetricsRegistry
 from bunkermedia.models import VideoMetadata
 from bunkermedia.network import NetworkStateManager
 from bunkermedia.server import create_app
+from bunkermedia.service import BunkerService
 from bunkermedia.workers import WorkerManager
 from bunkermedia.providers.local import LocalFolderProvider
 from bunkermedia.providers.rss import RSSProvider
@@ -202,6 +203,8 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("/storage/enforce", paths)
             self.assertIn("/imports/organize", paths)
             self.assertIn("/profiles", paths)
+            self.assertIn("/batches", paths)
+            self.assertIn("/batches/{batch_id}", paths)
             self.assertIn("/jobs/{job_id}/pause", paths)
             self.assertIn("/jobs/{job_id}/resume", paths)
             self.assertIn("/jobs/{job_id}/priority", paths)
@@ -289,6 +292,10 @@ class IntegrationTests(unittest.TestCase):
                         profiles = await client.get("/profiles")
                         self.assertEqual(profiles.status_code, 200)
                         self.assertGreaterEqual(len(profiles.json()["profiles"]), 1)
+
+                        batches = await client.get("/batches", params={"limit": 10})
+                        self.assertEqual(batches.status_code, 200)
+                        self.assertEqual(batches.json(), [])
 
                         seed_job = service.db.queue_download("https://example.invalid/dead", target_type="single")
                         service.db.dead_letter_job(seed_job, error="seed failure")
@@ -449,6 +456,132 @@ class IntegrationTests(unittest.TestCase):
                         self.assertEqual(len(hidden.json()), 0)
 
             asyncio.run(_exercise_flow())
+
+    def test_resumable_playlist_batch_recovers_partial_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg_path = root / "config.yaml"
+            cfg_path.write_text(
+                "\n".join(
+                    [
+                        "download_path: ./media",
+                        "database_path: ./db.sqlite",
+                        "download_archive: ./archive.txt",
+                        "auto_start_workers: false",
+                        "force_offline_mode: true",
+                        "retry_base_seconds: 1",
+                        "retry_max_seconds: 1",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            async def _exercise() -> None:
+                service = BunkerService(cfg_path)
+                await service.initialize()
+
+                async def _always_allowed() -> bool:
+                    return True
+
+                async def _mock_refresh_embeddings(limit: int = 40) -> int:
+                    return 0
+
+                entries = [
+                    VideoMetadata(
+                        video_id="batch_1",
+                        title="Batch One",
+                        channel="Batch Channel",
+                        source_url="https://example.invalid/watch?v=batch_1",
+                        playlist_index=1,
+                        downloaded=False,
+                    ),
+                    VideoMetadata(
+                        video_id="batch_2",
+                        title="Batch Two",
+                        channel="Batch Channel",
+                        source_url="https://example.invalid/watch?v=batch_2",
+                        playlist_index=2,
+                        downloaded=False,
+                    ),
+                ]
+
+                async def _mock_fetch_playlist_metadata(playlist_url: str, limit: int = 200):
+                    return entries
+
+                attempts = {"count": 0}
+
+                async def _mock_download_url(url: str, target_type: str = "auto", batch_id: int | None = None):
+                    attempts["count"] += 1
+                    file_one = root / "media" / "playlists" / "batch" / "01-batch-one.mp4"
+                    file_one.parent.mkdir(parents=True, exist_ok=True)
+                    file_one.write_bytes(b"1111")
+                    first = VideoMetadata(
+                        video_id="batch_1",
+                        title="Batch One",
+                        channel="Batch Channel",
+                        source_url=entries[0].source_url,
+                        local_path=str(file_one),
+                        playlist_index=1,
+                        downloaded=True,
+                    )
+                    service.db.upsert_video(first)
+                    service.db.mark_downloaded(first.video_id, first.local_path or str(file_one))
+                    if batch_id is not None:
+                        service.db.mark_batch_item_done(batch_id, first.video_id, first.local_path)
+
+                    if attempts["count"] == 1:
+                        raise RuntimeError("network interrupted")
+
+                    file_two = root / "media" / "playlists" / "batch" / "02-batch-two.mp4"
+                    file_two.parent.mkdir(parents=True, exist_ok=True)
+                    file_two.write_bytes(b"2222")
+                    second = VideoMetadata(
+                        video_id="batch_2",
+                        title="Batch Two",
+                        channel="Batch Channel",
+                        source_url=entries[1].source_url,
+                        local_path=str(file_two),
+                        playlist_index=2,
+                        downloaded=True,
+                    )
+                    service.db.upsert_video(second)
+                    service.db.mark_downloaded(second.video_id, second.local_path or str(file_two))
+                    if batch_id is not None:
+                        service.db.mark_batch_item_done(batch_id, second.video_id, second.local_path)
+                    return [first, second]
+
+                service.workers._allow_online_sync = _always_allowed  # type: ignore[method-assign]
+                service.scraper.fetch_playlist_metadata = _mock_fetch_playlist_metadata  # type: ignore[method-assign]
+                service.downloader.download_url = _mock_download_url  # type: ignore[method-assign]
+                service.intelligence.refresh_embeddings = _mock_refresh_embeddings  # type: ignore[method-assign]
+                service.workers.intelligence = service.intelligence
+
+                await service.add_url("https://www.youtube.com/playlist?list=resume123", target_type="playlist", priority=4)
+
+                await service.workers.process_download_queue_once()
+                partial_batches = service.list_download_batches(status="partial", limit=5)
+                self.assertEqual(len(partial_batches), 1)
+                self.assertEqual(int(partial_batches[0]["completed_items"]), 1)
+                self.assertEqual(int(partial_batches[0]["pending_items"]), 1)
+
+                pending_jobs = service.list_download_jobs(status="pending", limit=5)
+                self.assertEqual(len(pending_jobs), 1)
+                service.db.update_job_status(int(pending_jobs[0]["id"]), "pending")
+
+                await service.workers.process_download_queue_once()
+
+                completed_batches = service.list_download_batches(status="completed", limit=5)
+                self.assertEqual(len(completed_batches), 1)
+                self.assertEqual(int(completed_batches[0]["completed_items"]), 2)
+                self.assertGreaterEqual(int(completed_batches[0]["resumed_runs"]), 1)
+
+                completed_jobs = service.list_download_jobs(status="done", limit=5)
+                self.assertEqual(len(completed_jobs), 1)
+                self.assertEqual(int(completed_jobs[0]["batch_id"]), int(completed_batches[0]["id"]))
+
+                await service.shutdown()
+
+            asyncio.run(_exercise())
 
 
 if __name__ == "__main__":

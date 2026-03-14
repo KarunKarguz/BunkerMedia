@@ -596,6 +596,9 @@ function renderJobs(container, jobs, isDeadLetter = false) {
     sub.textContent = isDeadLetter
       ? `attempts ${job.attempts}  |  failed ${job.failed_at || "unknown"}`
       : `attempts ${job.attempts}  |  next ${job.next_run_at || "now"}`;
+    if (job.batch_id) {
+      sub.textContent += `  |  batch ${job.batch_id}`;
+    }
 
     if (isDeadLetter && job.id) {
       actions.appendChild(
@@ -709,13 +712,19 @@ function renderFeatured(data) {
 function renderStats(data) {
   const offline = data.offline_inventory || {};
   const queue = data.queue || [];
+  const batches = data.batches || [];
   const deadletters = data.deadletters || [];
 
   statOfflineHours.textContent = formatHours(offline.unwatched_duration_seconds || 0);
   statOfflineNote.textContent = data.offline_mode ? "Offline mode active" : "Online sync available";
 
   statQueue.textContent = String(queue.length);
-  statQueueNote.textContent = queue.length ? "Background jobs in flight" : "Queue idle";
+  if (batches.length) {
+    const activeBatches = batches.filter((item) => item.status === "running" || item.status === "partial").length;
+    statQueueNote.textContent = `${queue.length} jobs across ${activeBatches} active batches`;
+  } else {
+    statQueueNote.textContent = queue.length ? "Background jobs in flight" : "Queue idle";
+  }
 
   statTitles.textContent = String(offline.total_downloaded_items || 0);
   statStorageNote.textContent = `${formatBytes(offline.downloaded_storage_bytes || 0)} stored locally`;

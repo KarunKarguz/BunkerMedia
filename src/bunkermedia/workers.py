@@ -6,9 +6,11 @@ from typing import Any
 
 from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
+from bunkermedia.downloader import infer_target_type
 from bunkermedia.downloader import Downloader
 from bunkermedia.intelligence import IntelligenceEngine
 from bunkermedia.metrics import MetricsRegistry
+from bunkermedia.models import VideoMetadata
 from bunkermedia.network import NetworkStateManager
 from bunkermedia.recommender import RecommendationEngine
 from bunkermedia.scraper import Scraper
@@ -167,12 +169,39 @@ class WorkerManager:
             url = str(job["url"])
             target_type = str(job.get("target_type") or "auto")
             attempts = int(job.get("attempts") or 1)
+            batch_id = int(job["batch_id"]) if job.get("batch_id") is not None else None
             try:
-                await self.downloader.download_url(url, target_type=target_type)
+                effective_target = infer_target_type(url) if target_type == "auto" else target_type
+                if effective_target in {"playlist", "channel", "trending"}:
+                    batch_id = await self._prepare_batch_download(
+                        job_id=job_id,
+                        url=url,
+                        target_type=effective_target,
+                        existing_batch_id=batch_id,
+                    )
+                await self.downloader.download_url(url, target_type=effective_target, batch_id=batch_id)
+                if batch_id is not None:
+                    batch = self.db.reconcile_download_batch(batch_id)
+                    pending_items = int(batch.get("pending_items") or 0) if batch else 0
+                    if batch and pending_items > 0:
+                        self.db.mark_download_batch_status(
+                            batch_id,
+                            "partial",
+                            last_error=f"{pending_items} items remaining in batch",
+                        )
+                        raise RuntimeError(f"batch incomplete with {pending_items} items remaining")
+                    self.db.mark_download_batch_status(batch_id, "completed")
                 self.db.update_job_status(job_id, "done")
                 self.metrics.inc("download_jobs_done_total")
             except Exception as exc:
                 error = str(exc)
+                if batch_id is not None:
+                    batch = self.db.reconcile_download_batch(batch_id)
+                    status = "failed" if attempts >= self.config.max_download_attempts else "partial"
+                    summary = error
+                    if batch and int(batch.get("pending_items") or 0) > 0:
+                        summary = f"{error}; remaining={int(batch.get('pending_items') or 0)}"
+                    self.db.mark_download_batch_status(batch_id, status, last_error=summary)
                 if attempts >= self.config.max_download_attempts:
                     self.db.dead_letter_job(job_id, error=error)
                     self.metrics.inc("download_jobs_deadletter_total")
@@ -195,6 +224,47 @@ class WorkerManager:
                     url,
                     error,
                 )
+
+    async def _prepare_batch_download(
+        self,
+        job_id: int,
+        url: str,
+        target_type: str,
+        existing_batch_id: int | None = None,
+    ) -> int:
+        entries = await self._discover_batch_entries(url, target_type)
+        batch_title = self._batch_title(url, target_type, entries)
+        batch_id = self.db.start_or_resume_download_batch(
+            source_url=url,
+            batch_type=target_type,
+            title=batch_title,
+            total_items=len(entries),
+            job_id=job_id,
+        )
+        self.db.upsert_download_batch_items(batch_id, entries)
+        self.db.reconcile_download_batch(batch_id)
+        return batch_id
+
+    async def _discover_batch_entries(self, url: str, target_type: str) -> list[VideoMetadata]:
+        if target_type == "playlist":
+            return await self.scraper.fetch_playlist_metadata(url, limit=200)
+        if target_type == "channel":
+            return await self.scraper.fetch_channel_feed(url, limit=200)
+        if target_type == "trending":
+            return await self.scraper.fetch_trending(limit=50)
+        return []
+
+    @staticmethod
+    def _batch_title(url: str, target_type: str, entries: list[VideoMetadata]) -> str:
+        if entries:
+            channel = str(entries[0].channel or "").strip()
+            if target_type == "playlist":
+                return channel or "Playlist Batch"
+            if target_type == "channel":
+                return channel or "Channel Batch"
+        if target_type == "trending":
+            return "Trending Batch"
+        return url
 
     def _compute_retry_delay_seconds(self, attempts: int) -> int:
         base = max(1, self.config.retry_base_seconds)

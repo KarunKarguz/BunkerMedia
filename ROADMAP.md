@@ -79,7 +79,7 @@ Usable in intermittent/no-internet environments.
 - [x] Sync windows and bandwidth-aware scheduling.
 - [x] Download planner for "offline horizon" (e.g., next 3 days).
 - [x] Storage budget policies (keep/watch/evict strategy).
-- [ ] Resumable background download batches.
+- [x] Resumable background download batches.
 
 ### Exit Criteria
 
@@ -179,7 +179,7 @@ Production-grade open-source release for broad self-hosting.
 
 ## Next 4-Week Execution Plan
 
-1. Add resumable background download batches and partial-recovery logic.
-2. Harden private-vault workflows with profile PIN rotation and explicit allow/block controls.
-3. Add richer feedback actions (`not interested`, `hide channel`) and intent presets.
+1. Harden private-vault workflows with profile PIN rotation and explicit allow/block controls.
+2. Add richer feedback actions (`not interested`, `hide channel`) and intent presets.
+3. Add poster/thumb enrichment and richer media classification.
 4. Add community provider adapter registry and validation policy.

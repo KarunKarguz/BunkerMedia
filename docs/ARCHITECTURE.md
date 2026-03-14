@@ -9,6 +9,7 @@ BunkerMedia is organized into these runtime layers:
 2. Storage:
 - `database.py`: SQLite schema and query layer
 - `migrations.py`: schema migration/version management
+- `download_batches` / `download_batch_items`: persisted batch progress for resumable long-running acquisition jobs
 
 3. Intelligence:
 - `intelligence.py`: transcript/metadata extraction and embedding generation
@@ -40,11 +41,12 @@ BunkerMedia is organized into these runtime layers:
 ## Data Flow
 
 1. URL/feeds are queued or scraped.
-2. Downloaded and scraped video metadata is upserted.
-3. Intelligence worker generates embeddings from transcript/metadata.
-4. Profile-aware policy filters remove private/explicit items for unauthorized profiles.
-5. Recommender combines preference, history, trending, semantic similarity.
-6. API and CLI expose ranked recommendations and media playback.
+2. Playlist/channel/trending queue jobs materialize resumable batch state before download.
+3. Downloaded and scraped video metadata is upserted.
+4. Intelligence worker generates embeddings from transcript/metadata.
+5. Profile-aware policy filters remove private/explicit items for unauthorized profiles.
+6. Recommender combines preference, history, trending, semantic similarity.
+7. API and CLI expose ranked recommendations, batch state, and media playback.
 
 ## Privacy Model
 

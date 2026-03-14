@@ -91,6 +91,25 @@ curl -s -X POST http://localhost:8080/storage/enforce
 
 These operations are also run in background worker recommendation cycles.
 
+## Resumable Download Batches
+
+Long-running playlist, channel, and trending downloads are tracked as resumable batches.
+
+Operational behavior:
+
+- batch progress is persisted in SQLite,
+- completed items are reconciled from the local library on retry,
+- interrupted `processing` jobs are reset to `pending` on startup,
+- partially completed batches remain resumable until finished or dead-lettered.
+
+Inspection:
+
+```bash
+bunker jobs --status pending --limit 50
+bunker batches --json
+curl -s http://localhost:8080/batches?status=partial&limit=20
+```
+
 ## NAS Import Organization
 
 Drop media files into configured import folders such as:

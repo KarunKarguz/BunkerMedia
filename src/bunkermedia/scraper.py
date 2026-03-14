@@ -76,6 +76,7 @@ class Scraper:
                 channel=channel,
                 upload_date=str(upload_date) if upload_date else None,
                 source_url=source_url,
+                playlist_index=self._coerce_int(entry.get("playlist_index")),
                 duration_seconds=duration_seconds,
                 downloaded=False,
             )
@@ -91,3 +92,12 @@ class Scraper:
         if entries and isinstance(entries, list):
             return [entry for entry in entries if isinstance(entry, dict)]
         return [info] if isinstance(info, dict) else []
+
+    @staticmethod
+    def _coerce_int(value: Any) -> int | None:
+        try:
+            if value is None:
+                return None
+            return int(value)
+        except (TypeError, ValueError):
+            return None

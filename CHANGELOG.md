@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.6] - 2026-03-14
+
+### Added
+
+- Resumable download batch tracking for playlist, channel, and trending queue jobs.
+- Batch inspection surfaces in CLI (`bunker batches`) and API (`GET /batches`, `GET /batches/{batch_id}`).
+- Startup recovery for in-flight queue jobs so interrupted `processing` jobs are returned to `pending`.
+
+### Changed
+
+- Batch downloads now persist per-item completion state and reconcile progress from the local library on retry.
+- Health and metrics now expose active and partial batch counts.
+
 ## [0.2.5] - 2026-03-14
 
 ### Added

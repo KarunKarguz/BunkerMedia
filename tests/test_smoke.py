@@ -128,9 +128,27 @@ def test_schema_migrations_list(tmp_path: Path) -> None:
     db = Database(tmp_path / "schema.db")
     db.initialize()
     migrations = db.list_schema_migrations()
-    assert len(migrations) >= 5
-    assert migrations[-1]["version"] >= 5
+    assert len(migrations) >= 7
+    assert migrations[-1]["version"] >= 7
     db.close()
+
+
+def test_resumable_batch_state_recovers_processing_jobs(tmp_path: Path) -> None:
+    db_path = tmp_path / "resume.db"
+    db = Database(db_path)
+    db.initialize()
+    job_id = db.queue_download("https://www.youtube.com/playlist?list=test123", target_type="playlist", priority=3)
+    claimed = db.claim_pending_jobs(limit=5)
+    assert len(claimed) == 1
+    assert int(claimed[0]["id"]) == job_id
+    db.close()
+
+    reopened = Database(db_path)
+    reopened.initialize()
+    recovered = reopened.list_download_jobs(status="pending", limit=5)
+    assert len(recovered) == 1
+    assert int(recovered[0]["id"]) == job_id
+    reopened.close()
 
 
 def test_profile_state_and_queue_controls(tmp_path: Path) -> None:

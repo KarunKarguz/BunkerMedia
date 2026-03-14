@@ -86,7 +86,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         finally:
             await service.shutdown()
 
-    app = FastAPI(title="BunkerMedia", version="0.2.5", lifespan=lifespan)
+    app = FastAPI(title="BunkerMedia", version="0.2.6", lifespan=lifespan)
     app.state.service = service
 
     @app.middleware("http")
@@ -180,6 +180,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             )
 
         queue = service.list_download_jobs(status=None, limit=40)
+        batches = service.list_download_batches(limit=20)
         deadletters = service.list_dead_letter_jobs(limit=20)
         return {
             "continue_watching": continue_watching,
@@ -187,6 +188,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             "recommended": recommended,
             "fresh": fresh,
             "queue": queue,
+            "batches": batches,
             "deadletters": deadletters,
             "offline_mode": not service.network.is_online,
             "offline_inventory": service.get_offline_inventory(),
@@ -386,6 +388,20 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         limit: int = Query(100, ge=1, le=1000),
     ):
         return service.list_download_jobs(status=status, limit=limit)
+
+    @app.get("/batches")
+    async def list_batches(
+        status: str | None = Query(default=None, pattern="^(queued|running|partial|completed|failed)?$"),
+        limit: int = Query(100, ge=1, le=1000),
+    ):
+        return service.list_download_batches(status=status, limit=limit)
+
+    @app.get("/batches/{batch_id}")
+    async def get_batch(batch_id: int):
+        batch = service.get_download_batch(batch_id)
+        if not batch:
+            raise HTTPException(status_code=404, detail="Batch not found")
+        return batch
 
     @app.post("/jobs/{job_id}/pause")
     async def pause_job(job_id: int):

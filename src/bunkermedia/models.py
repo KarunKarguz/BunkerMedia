@@ -12,6 +12,7 @@ class VideoMetadata:
     upload_date: Optional[str] = None
     source_url: Optional[str] = None
     local_path: Optional[str] = None
+    playlist_index: Optional[int] = None
     duration_seconds: Optional[int] = None
     file_size_bytes: Optional[int] = None
     downloaded: bool = False

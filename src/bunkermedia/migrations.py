@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 7
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +62,7 @@ def _ordered_migrations() -> list[Migration]:
         Migration(4, "video_duration_and_file_size", _migration_video_duration_file_size),
         Migration(5, "profiles_and_profile_state", _migration_profiles_and_profile_state),
         Migration(6, "privacy_vault_support", _migration_privacy_vault_support),
+        Migration(7, "download_batch_resume_support", _migration_download_batch_resume_support),
     ]
 
 
@@ -214,6 +215,54 @@ def _migration_privacy_vault_support(conn: "sqlite3.Connection") -> None:
     _add_column_if_missing(conn, "profiles", "pin_hash", "TEXT")
     conn.execute("UPDATE profiles SET can_access_private=0 WHERE can_access_private IS NULL")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_videos_privacy_level ON videos(privacy_level)")
+
+
+def _migration_download_batch_resume_support(conn: "sqlite3.Connection") -> None:
+    _add_column_if_missing(conn, "download_jobs", "batch_id", "INTEGER")
+    _add_column_if_missing(conn, "dead_letter_jobs", "batch_id", "INTEGER")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS download_batches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_url TEXT NOT NULL,
+            batch_type TEXT NOT NULL,
+            title TEXT,
+            status TEXT DEFAULT 'queued',
+            total_items INTEGER DEFAULT 0,
+            completed_items INTEGER DEFAULT 0,
+            failed_items INTEGER DEFAULT 0,
+            resumed_runs INTEGER DEFAULT 0,
+            last_error TEXT,
+            last_job_id INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS download_batch_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            video_id TEXT NOT NULL,
+            title TEXT,
+            source_url TEXT,
+            item_index INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'pending',
+            local_path TEXT,
+            last_error TEXT,
+            updated_at TEXT NOT NULL,
+            UNIQUE(batch_id, video_id),
+            FOREIGN KEY(batch_id) REFERENCES download_batches(id),
+            FOREIGN KEY(video_id) REFERENCES videos(video_id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_download_batches_status ON download_batches(status, updated_at)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_download_batch_items_batch ON download_batch_items(batch_id, status, item_index)"
+    )
 
 
 def _add_column_if_missing(conn: "sqlite3.Connection", table: str, column: str, column_spec: str) -> None:

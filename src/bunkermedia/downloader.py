@@ -30,16 +30,18 @@ class Downloader:
         self.library = library
         self.logger = logger
 
-    async def download_url(self, url: str, target_type: str = "auto") -> list[VideoMetadata]:
+    async def download_url(self, url: str, target_type: str = "auto", batch_id: int | None = None) -> list[VideoMetadata]:
         mode = infer_target_type(url) if target_type == "auto" else target_type
-        videos = await asyncio.to_thread(self._download_sync, url, mode)
+        videos = await asyncio.to_thread(self._download_sync, url, mode, batch_id)
         for meta in videos:
             self.db.upsert_video(meta)
             if meta.local_path:
                 self.db.mark_downloaded(meta.video_id, meta.local_path, file_size_bytes=meta.file_size_bytes)
+            if batch_id is not None and meta.local_path:
+                self.db.mark_batch_item_done(batch_id, meta.video_id, meta.local_path)
         return videos
 
-    def _download_sync(self, url: str, target_type: str) -> list[VideoMetadata]:
+    def _download_sync(self, url: str, target_type: str, batch_id: int | None = None) -> list[VideoMetadata]:
         finished_paths: dict[str, str] = {}
 
         def progress_hook(data: dict[str, Any]) -> None:
@@ -50,6 +52,8 @@ class Downloader:
             filename = data.get("filename")
             if video_id and filename:
                 finished_paths[str(video_id)] = str(filename)
+                if batch_id is not None:
+                    self.db.mark_batch_item_done(batch_id, str(video_id), str(filename))
 
         opts: dict[str, Any] = {
             "quiet": True,
@@ -114,6 +118,7 @@ class Downloader:
                 upload_date=str(upload_date) if upload_date else None,
                 source_url=source_url,
                 local_path=str(local_path) if local_path else None,
+                playlist_index=self._coerce_int(entry.get("playlist_index")),
                 duration_seconds=duration_seconds,
                 file_size_bytes=file_size_bytes,
                 downloaded=bool(local_path),
@@ -131,3 +136,12 @@ class Downloader:
         if entries and isinstance(entries, list):
             return [entry for entry in entries if isinstance(entry, dict)]
         return [info] if isinstance(info, dict) else []
+
+    @staticmethod
+    def _coerce_int(value: Any) -> int | None:
+        try:
+            if value is None:
+                return None
+            return int(value)
+        except (TypeError, ValueError):
+            return None
