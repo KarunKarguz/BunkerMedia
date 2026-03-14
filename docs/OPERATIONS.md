@@ -110,6 +110,21 @@ bunker batches --json
 curl -s http://localhost:8080/batches?status=partial&limit=20
 ```
 
+## Artwork Cache
+
+Bunku artwork is served through the local API:
+
+```bash
+curl -I http://localhost:8080/artwork/<video_id>
+```
+
+Behavior:
+
+- remote thumbnails are cached locally when available,
+- local sidecar artwork is reused for local/imported media,
+- titles without source artwork receive generated SVG posters,
+- profile visibility rules still apply because artwork is resolved through the service layer.
+
 ## NAS Import Organization
 
 Drop media files into configured import folders such as:

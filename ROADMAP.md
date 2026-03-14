@@ -129,7 +129,7 @@ The repo must meet a real open-source `1.0` bar.
 
 ### UX and Playback
 
-- [ ] poster/thumb enrichment exists and is cached locally
+- [x] poster/thumb enrichment exists and is cached locally
 - [ ] fullscreen playback flow exists in Bunku
 - [ ] continue-watching is prominent and profile-aware
 - [ ] TV remote / keyboard flow is stable on couch-distance displays
@@ -170,10 +170,10 @@ The repo must meet a real open-source `1.0` bar.
 
 ### Track A: OTT Polish
 
-1. Add poster/thumb enrichment and local artwork cache.
-2. Add fullscreen playback and stronger focus-memory behavior.
-3. Add recommendation actions: `not interested`, `hide channel`.
-4. Improve continue-watching and per-profile shelves.
+1. Add fullscreen playback and stronger focus-memory behavior.
+2. Add recommendation actions: `not interested`, `hide channel`.
+3. Improve continue-watching and per-profile shelves.
+4. Refine artwork quality policy and lightweight refresh rules.
 
 ### Track B: Privacy and Family Controls
 
@@ -208,12 +208,11 @@ If BunkerMedia is going to be more than "yet another self-hosted media app", the
 
 These are the top blockers preventing a clean `1.0.0` release today:
 
-1. no artwork/poster enrichment pipeline yet
-2. no fullscreen-first premium playback flow yet
-3. no PIN rotation or stronger parental allow/block controls yet
-4. no continuous NAS watcher yet
-5. no CI quality-gate stack (`ruff` / `mypy` / coverage) yet
-6. no documented upgrade-validation matrix yet
+1. no fullscreen-first premium playback flow yet
+2. no PIN rotation or stronger parental allow/block controls yet
+3. no continuous NAS watcher yet
+4. no CI quality-gate stack (`ruff` / `mypy` / coverage) yet
+5. no documented upgrade-validation matrix yet
 
 ## After 1.0
 

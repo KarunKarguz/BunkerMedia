@@ -81,6 +81,7 @@ class RSSProvider(Provider):
                 channel=channel_title.strip(),
                 upload_date=upload_date,
                 source_url=link.strip(),
+                thumbnail_url=self._extract_thumbnail(item),
                 downloaded=False,
             )
             self.db.upsert_video(meta)
@@ -127,6 +128,14 @@ class RSSProvider(Provider):
             for child in node.iter():
                 if self._strip_tag(child.tag) == path_key and child.attrib.get(attr):
                     return child.attrib[attr]
+        return None
+
+    def _extract_thumbnail(self, node: ET.Element) -> str | None:
+        thumbnail = self._find_attr(node, ["thumbnail", "content", "enclosure"], "url")
+        if thumbnail and str(thumbnail).startswith("http"):
+            lowered = str(thumbnail).lower()
+            if any(token in lowered for token in (".jpg", ".jpeg", ".png", ".webp", ".gif", "image")):
+                return str(thumbnail)
         return None
 
     @staticmethod

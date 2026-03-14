@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+from dataclasses import asdict
 from pathlib import Path
 
+from bunkermedia.artwork import ArtworkManager
 from bunkermedia.config import AppConfig
 from bunkermedia.database import Database
 from bunkermedia.downloader import Downloader
@@ -49,6 +52,7 @@ class BunkerService:
         self.metrics = MetricsRegistry()
         self.db = Database(self.config.database_path)
         self.library = MediaLibrary(self.config.download_path)
+        self.artwork = ArtworkManager(self.library, self.db, self.logger)
         self.network = NetworkStateManager(self.config, self.logger)
         self.downloader = Downloader(self.config, self.db, self.library, self.logger)
         self.scraper = Scraper(self.db, self.logger)
@@ -104,6 +108,7 @@ class BunkerService:
         self.config.download_archive.parent.mkdir(parents=True, exist_ok=True)
         self.config.download_archive.touch(exist_ok=True)
         await self.network.refresh()
+        await asyncio.to_thread(self.artwork.backfill_missing, 48, False)
         self.metrics.set_gauge("network_online", 1.0 if self.network.is_online else 0.0)
         self._initialized = True
         self.metrics.inc("service_init_total")
@@ -152,12 +157,14 @@ class BunkerService:
                     await self.add_url(item.source_url, target_type="auto", priority=1)
 
         if self.config.auto_organize_imports and self.config.import_watch_folders:
-            organized = self.organize_imports()
+            organized = await self.organize_imports()
             if int(organized.get("organized") or 0) > 0:
                 self.metrics.inc("imports_organized_total", float(int(organized.get("organized") or 0)))
 
         if self._local_watch_folders():
             await self.discover(provider="local", source="default", limit=2000)
+
+        await asyncio.to_thread(self.artwork.backfill_missing, 120, self.network.is_online)
 
         storage_before = self.enforce_storage_policy()
         if str(storage_before.get("status")) == "ok":
@@ -245,7 +252,7 @@ class BunkerService:
             duration_max=duration_max,
         )
         filtered = [row for row in rows if self._video_allowed_for_profile(row, active)]
-        return filtered[:limit]
+        return [self._decorate_video_payload(row) for row in filtered[:limit]]
 
     def list_providers(self) -> list[str]:
         return self.providers.list()
@@ -253,12 +260,20 @@ class BunkerService:
     async def discover(self, provider: str, source: str, limit: int = 50):
         selected = self.providers.get(provider)
         items = await selected.discover(source, limit=limit)
+        if items:
+            await asyncio.to_thread(
+                lambda: [self.artwork.ensure_for_video(asdict(item), allow_remote=False) for item in items[:24]]
+            )
         self.metrics.inc(f"provider_discover_{selected.name}_total")
         return items
 
     async def acquire(self, provider: str, source: str, mode: str = "auto"):
         selected = self.providers.get(provider)
         items = await selected.acquire(source, mode=mode)
+        if items:
+            await asyncio.to_thread(
+                lambda: [self.artwork.ensure_for_video(asdict(item), allow_remote=False) for item in items[:24]]
+            )
         self.metrics.inc(f"provider_acquire_{selected.name}_total")
         return items
 
@@ -267,7 +282,7 @@ class BunkerService:
         video = self.db.get_video(video_id, profile_id=str(active["profile_id"]))
         if not video or not self._video_allowed_for_profile(video, active):
             return None
-        return video
+        return self._decorate_video_payload(video)
 
     def mark_watched(
         self,
@@ -314,6 +329,16 @@ class BunkerService:
         if not path.exists():
             return None
         return path
+
+    async def get_artwork_bytes(self, video_id: str) -> tuple[bytes, str] | None:
+        active = self.get_active_profile()
+        video = self.db.get_video(video_id, profile_id=str(active["profile_id"]))
+        if not video or not self._video_allowed_for_profile(video, active):
+            return None
+        artwork_path = await asyncio.to_thread(self.artwork.ensure_for_video, video, self.network.is_online)
+        if artwork_path is None or not artwork_path.exists():
+            return None
+        return artwork_path.read_bytes(), self.artwork.media_type_for_path(artwork_path)
 
     async def refresh_network_state(self) -> bool:
         online = await self.network.refresh()
@@ -435,8 +460,11 @@ class BunkerService:
             return False
         return self.db.set_video_privacy(video_id, privacy_level)
 
-    def organize_imports(self) -> dict[str, object]:
-        return self.import_organizer.organize_once()
+    async def organize_imports(self) -> dict[str, object]:
+        result = self.import_organizer.organize_once()
+        if int(result.get("organized") or 0) > 0 and self._local_watch_folders():
+            await self.discover(provider="local", source="default", limit=2000)
+        return result
 
     def get_health_state(self) -> dict[str, object]:
         return {
@@ -463,6 +491,13 @@ class BunkerService:
             seen.add(key)
             ordered.append(path)
         return ordered
+
+    @staticmethod
+    def _decorate_video_payload(video: dict[str, object]) -> dict[str, object]:
+        payload = dict(video)
+        video_id = str(payload.get("video_id") or "").strip()
+        payload["artwork_url"] = f"/artwork/{video_id}" if video_id else None
+        return payload
 
     def render_metrics(self) -> str:
         self.metrics.set_gauge("queue_pending", float(len(self.db.list_download_jobs(status="pending", limit=5000))))

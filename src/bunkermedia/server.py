@@ -86,7 +86,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         finally:
             await service.shutdown()
 
-    app = FastAPI(title="BunkerMedia", version="0.2.6", lifespan=lifespan)
+    app = FastAPI(title="BunkerMedia", version="0.2.7", lifespan=lifespan)
     app.state.service = service
 
     @app.middleware("http")
@@ -175,6 +175,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
                     "source_url": existing.get("source_url"),
                     "upload_date": existing.get("upload_date"),
                     "privacy_level": existing.get("privacy_level") or "standard",
+                    "artwork_url": existing.get("artwork_url"),
                     "explanation": rec.explanation,
                 }
             )
@@ -223,6 +224,14 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     async def privacy_state():
         return service.get_privacy_state()
 
+    @app.get("/artwork/{video_id}")
+    async def artwork(video_id: str):
+        resolved = await service.get_artwork_bytes(video_id)
+        if not resolved:
+            raise HTTPException(status_code=404, detail="Artwork not found")
+        payload, media_type = resolved
+        return Response(content=payload, media_type=media_type, headers={"Cache-Control": "public, max-age=3600"})
+
     @app.post("/offline/plan")
     async def offline_plan():
         return await service.plan_offline_queue()
@@ -233,7 +242,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
 
     @app.post("/imports/organize")
     async def imports_organize():
-        return service.organize_imports()
+        return await service.organize_imports()
 
     @app.get("/schema")
     async def schema():
@@ -476,4 +485,5 @@ def _serialize_video(item: dict[str, Any]) -> dict[str, Any]:
         "source_url": item.get("source_url"),
         "watched": bool(item.get("watched")),
         "privacy_level": item.get("privacy_level") or "standard",
+        "artwork_url": item.get("artwork_url"),
     }

@@ -2,7 +2,10 @@
 
 ## Overview
 
-This slice adds a privacy-aware control plane to BunkerMedia without changing the fundamental storage and playback architecture.
+This document now covers two major design slices:
+
+- privacy-aware control and vault behavior,
+- local artwork enrichment and poster caching for the OTT catalog.
 
 ## Design Decisions
 
@@ -26,6 +29,11 @@ This slice adds a privacy-aware control plane to BunkerMedia without changing th
 - Recommendation generation also filters private media for unauthorized profiles.
 - Stream path resolution uses the filtered video lookup path so hidden items cannot be streamed by ID from non-vault profiles.
 
+4. Local artwork over client-side remote fetches
+- Artwork should be served from the BunkerMedia server, not fetched directly by the browser from third-party providers.
+- This avoids leaking client devices directly to external thumbnail hosts.
+- When no cached artwork exists, the service may download and store a thumbnail server-side or generate a local SVG fallback.
+
 ## Schema Changes
 
 Migration `v6` adds:
@@ -33,6 +41,11 @@ Migration `v6` adds:
 - `videos.privacy_level`
 - `profiles.can_access_private`
 - `profiles.pin_hash`
+
+Migration `v8` adds:
+
+- `videos.thumbnail_url`
+- `videos.artwork_path`
 
 ## Runtime Components
 
@@ -58,12 +71,19 @@ Migration `v6` adds:
 - prompts for a PIN when selecting a locked profile
 - allows private-vault profiles to mark media as `private` or `explicit`
 
+5. `artwork.py`
+- downloads remote thumbnail metadata into a local artwork cache
+- generates fallback SVG posters for titles without source artwork
+- preserves the local-only privacy model by giving Bunku a stable local artwork route
+
 ## Testing Strategy
 
 - Integration tests verify:
   - privacy endpoint availability
   - PIN-protected profile selection
   - private media visibility filtering
+  - local artwork route availability
+  - resumable sidecar/local artwork behavior through local provider discovery
 - Unit tests verify:
   - storage privacy marker compliance
   - service-level hidden/visible behavior across profiles

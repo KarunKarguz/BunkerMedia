@@ -31,6 +31,7 @@ Current maturity: `public beta`. The core platform is working, but the project i
 - Multi-user profiles with active-profile switching and kids-safe mode
 - Private-vault mode with encrypted-storage health checks, profile PINs, and hidden private media
 - Resumable playlist/channel/trending download batches with persisted progress and startup recovery
+- Local artwork/poster cache with remote thumbnail capture and generated fallback artwork
 - Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, library filters, queue/dead-letter controls, recommendation reasoning, inline playback, and installable app-shell behavior
 - FastAPI media server
 - Async background workers for sync and queued downloads
@@ -141,6 +142,7 @@ Inside Bunku, TV mode is enabled by default:
 - Queue rows support pause/resume and priority tuning directly from the UI
 - Dead letters can be retried individually or cleared in bulk from the UI
 - Playlist/channel/trending queue runs retain batch progress and resume after restart or retry
+- Cards and featured rails use local artwork URLs backed by cached thumbnails or generated posters
 - On supported browsers, `Install App` pins Bunku to a phone/tablet/TV home screen
 
 ## API Endpoints
@@ -150,6 +152,7 @@ Inside Bunku, TV mode is enabled by default:
 - `GET /schema`
 - `GET /system`
 - `GET /privacy`
+- `GET /artwork/{video_id}`
 - `GET /bunku/manifest.webmanifest`
 - `GET /bunku/sw.js`
 - `GET /bunku/icon.svg`

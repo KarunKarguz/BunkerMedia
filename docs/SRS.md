@@ -13,6 +13,8 @@ BunkerMedia provides a local-first media acquisition and playback system for sel
 2. Media serving
 - The system shall list, search, and stream locally stored media over the LAN.
 - The system shall track watch, like, dislike, and rating signals.
+- The system shall expose local artwork URLs for supported catalog items.
+- The system shall generate fallback artwork when source artwork is unavailable.
 
 3. Profiles
 - The system shall support multiple local profiles.
@@ -33,6 +35,10 @@ BunkerMedia provides a local-first media acquisition and playback system for sel
 6. Offline operation
 - The system shall remain usable when internet access is unavailable.
 - The system shall support offline inventory planning and storage enforcement.
+
+7. Catalog presentation
+- The system shall cache artwork locally when remote thumbnail metadata is available.
+- The system shall preserve local sidecar artwork when organizing imported media.
 
 ## Non-Functional Requirements
 

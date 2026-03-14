@@ -118,6 +118,7 @@ class Downloader:
                 upload_date=str(upload_date) if upload_date else None,
                 source_url=source_url,
                 local_path=str(local_path) if local_path else None,
+                thumbnail_url=self._extract_thumbnail_url(entry, video_id),
                 playlist_index=self._coerce_int(entry.get("playlist_index")),
                 duration_seconds=duration_seconds,
                 file_size_bytes=file_size_bytes,
@@ -145,3 +146,18 @@ class Downloader:
             return int(value)
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _extract_thumbnail_url(entry: dict[str, Any], video_id: str) -> str | None:
+        candidate = entry.get("thumbnail")
+        if isinstance(candidate, str) and candidate.startswith("http"):
+            return candidate
+        thumbnails = entry.get("thumbnails")
+        if isinstance(thumbnails, list):
+            for item in reversed(thumbnails):
+                url = item.get("url") if isinstance(item, dict) else None
+                if isinstance(url, str) and url.startswith("http"):
+                    return url
+        if video_id:
+            return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+        return None

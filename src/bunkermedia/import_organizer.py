@@ -23,6 +23,15 @@ AUDIO_EXTENSIONS = {
     ".wav",
 }
 
+ARTWORK_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".gif",
+    ".svg",
+}
+
 
 class ImportOrganizer:
     def __init__(
@@ -79,6 +88,7 @@ class ImportOrganizer:
 
                 try:
                     target = self._destination_for(root, path, media_type)
+                    sidecars = self._related_artwork(path)
                     outcome = self._place_file(path, target)
                 except OSError:
                     errors += 1
@@ -89,6 +99,7 @@ class ImportOrganizer:
                     duplicates += 1
                     continue
                 if outcome == "organized":
+                    self._place_related_artwork(sidecars, target)
                     organized += 1
                     imported.append(str(target))
                     continue
@@ -143,6 +154,21 @@ class ImportOrganizer:
             shutil.move(str(source), str(target))
         return "organized"
 
+    def _place_related_artwork(self, sidecars: list[Path], target_media: Path) -> None:
+        for source in sidecars:
+            if not source.exists() or not source.is_file():
+                continue
+            target = target_media.with_suffix(source.suffix.lower())
+            if target.exists():
+                continue
+            try:
+                if self.move_mode == "copy":
+                    shutil.copy2(source, target)
+                else:
+                    shutil.move(str(source), str(target))
+            except OSError:
+                self.logger.warning("Import artwork move skipped source=%s target=%s", source, target)
+
     @staticmethod
     def _same_file(left: Path, right: Path) -> bool:
         try:
@@ -175,6 +201,15 @@ class ImportOrganizer:
         if suffix in AUDIO_EXTENSIONS:
             return "audio"
         return None
+
+    @staticmethod
+    def _related_artwork(path: Path) -> list[Path]:
+        matches: list[Path] = []
+        for suffix in ARTWORK_EXTENSIONS:
+            candidate = path.with_suffix(suffix)
+            if candidate.exists() and candidate.is_file():
+                matches.append(candidate)
+        return matches
 
     @staticmethod
     def _collection_name(root: Path, source: Path) -> str:

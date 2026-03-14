@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +63,7 @@ def _ordered_migrations() -> list[Migration]:
         Migration(5, "profiles_and_profile_state", _migration_profiles_and_profile_state),
         Migration(6, "privacy_vault_support", _migration_privacy_vault_support),
         Migration(7, "download_batch_resume_support", _migration_download_batch_resume_support),
+        Migration(8, "video_artwork_support", _migration_video_artwork_support),
     ]
 
 
@@ -263,6 +264,11 @@ def _migration_download_batch_resume_support(conn: "sqlite3.Connection") -> None
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_download_batch_items_batch ON download_batch_items(batch_id, status, item_index)"
     )
+
+
+def _migration_video_artwork_support(conn: "sqlite3.Connection") -> None:
+    _add_column_if_missing(conn, "videos", "thumbnail_url", "TEXT")
+    _add_column_if_missing(conn, "videos", "artwork_path", "TEXT")
 
 
 def _add_column_if_missing(conn: "sqlite3.Connection", table: str, column: str, column_spec: str) -> None:

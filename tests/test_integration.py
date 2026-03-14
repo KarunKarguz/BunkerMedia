@@ -167,6 +167,8 @@ class IntegrationTests(unittest.TestCase):
             media_dir.mkdir(parents=True, exist_ok=True)
             clip = media_dir / "episode.mp4"
             clip.write_bytes(b"1234")
+            poster = media_dir / "episode.jpg"
+            poster.write_bytes(b"fakejpeg")
 
             cfg_path = root / "config.yaml"
             cfg_path.write_text(
@@ -195,6 +197,7 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("/metrics", paths)
             self.assertIn("/system", paths)
             self.assertIn("/privacy", paths)
+            self.assertIn("/artwork/{video_id}", paths)
             self.assertIn("/bunku/manifest.webmanifest", paths)
             self.assertIn("/bunku/sw.js", paths)
             self.assertIn("/bunku/icon.svg", paths)
@@ -240,6 +243,7 @@ class IntegrationTests(unittest.TestCase):
                         )
                         self.assertEqual(filtered_search.status_code, 200)
                         self.assertGreaterEqual(len(filtered_search.json()), 1)
+                        self.assertTrue(filtered_search.json()[0]["artwork_url"].startswith("/artwork/"))
 
                         filtered_only = await client.get(
                             "/search",
@@ -296,6 +300,10 @@ class IntegrationTests(unittest.TestCase):
                         batches = await client.get("/batches", params={"limit": 10})
                         self.assertEqual(batches.status_code, 200)
                         self.assertEqual(batches.json(), [])
+
+                        artwork = await client.get(filtered_search.json()[0]["artwork_url"])
+                        self.assertEqual(artwork.status_code, 200)
+                        self.assertTrue(artwork.headers["content-type"].split(";")[0].startswith("image/"))
 
                         seed_job = service.db.queue_download("https://example.invalid/dead", target_type="single")
                         service.db.dead_letter_job(seed_job, error="seed failure")

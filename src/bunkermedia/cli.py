@@ -240,7 +240,7 @@ async def _cmd_status(args: argparse.Namespace) -> None:
 async def _cmd_imports_organize(args: argparse.Namespace) -> None:
     service = BunkerService(config_path=args.config)
     await service.initialize()
-    result = service.organize_imports()
+    result = await service.organize_imports()
     if args.json:
         print(json.dumps(result, separators=(",", ":"), ensure_ascii=True))
     else:

@@ -22,7 +22,7 @@ def test_config_defaults(tmp_path: Path) -> None:
 def test_database_init(tmp_path: Path) -> None:
     db = Database(tmp_path / "test.db")
     db.initialize()
-    assert db.get_schema_version() >= 5
+    assert db.get_schema_version() >= 8
     assert len(db.list_profiles()) >= 2
     db.close()
 
@@ -128,8 +128,8 @@ def test_schema_migrations_list(tmp_path: Path) -> None:
     db = Database(tmp_path / "schema.db")
     db.initialize()
     migrations = db.list_schema_migrations()
-    assert len(migrations) >= 7
-    assert migrations[-1]["version"] >= 7
+    assert len(migrations) >= 8
+    assert migrations[-1]["version"] >= 8
     db.close()
 
 
@@ -358,3 +358,42 @@ def test_import_organizer_moves_video_into_library(tmp_path: Path) -> None:
     target = media_root / "library" / "video" / "travel" / "camp walk.mp4"
     assert target.exists()
     assert not source.exists()
+
+
+def test_import_organizer_moves_sidecar_artwork(tmp_path: Path) -> None:
+    media_root = tmp_path / "media"
+    imports_root = media_root / "imports"
+    incoming = imports_root / "series"
+    incoming.mkdir(parents=True, exist_ok=True)
+    source = incoming / "episode one.mp4"
+    poster = incoming / "episode one.jpg"
+    source.write_bytes(b"video")
+    poster.write_bytes(b"poster")
+
+    from bunkermedia.library import MediaLibrary
+
+    library = MediaLibrary(media_root)
+    library.ensure_layout()
+    organizer = ImportOrganizer(
+        library,
+        [imports_root],
+        move_mode="move",
+        scan_limit=50,
+        logger=type(
+            "L",
+            (),
+            {
+                "info": lambda *a, **k: None,
+                "exception": lambda *a, **k: None,
+                "warning": lambda *a, **k: None,
+            },
+        )(),
+    )
+    result = organizer.organize_once()
+    assert result["status"] == "ok"
+    target = media_root / "library" / "video" / "series" / "episode one.mp4"
+    target_poster = media_root / "library" / "video" / "series" / "episode one.jpg"
+    assert target.exists()
+    assert target_poster.exists()
+    assert not source.exists()
+    assert not poster.exists()

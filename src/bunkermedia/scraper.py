@@ -76,6 +76,7 @@ class Scraper:
                 channel=channel,
                 upload_date=str(upload_date) if upload_date else None,
                 source_url=source_url,
+                thumbnail_url=self._extract_thumbnail_url(entry, video_id),
                 playlist_index=self._coerce_int(entry.get("playlist_index")),
                 duration_seconds=duration_seconds,
                 downloaded=False,
@@ -101,3 +102,18 @@ class Scraper:
             return int(value)
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _extract_thumbnail_url(entry: dict[str, Any], video_id: str) -> str | None:
+        candidate = entry.get("thumbnail")
+        if isinstance(candidate, str) and candidate.startswith("http"):
+            return candidate
+        thumbnails = entry.get("thumbnails")
+        if isinstance(thumbnails, list):
+            for item in reversed(thumbnails):
+                url = item.get("url") if isinstance(item, dict) else None
+                if isinstance(url, str) and url.startswith("http"):
+                    return url
+        if video_id:
+            return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+        return None

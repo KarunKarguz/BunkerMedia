@@ -13,6 +13,8 @@ class MediaLibrary:
             "youtube/single",
             "playlists",
             "trending",
+            "artwork/cache",
+            "artwork/generated",
             "library/video",
             "library/audio",
             "library/mixed",
@@ -29,6 +31,12 @@ class MediaLibrary:
             self.root / "library" / "audio",
             self.root / "library" / "mixed",
         ]
+
+    def artwork_cache_root(self) -> Path:
+        return self.root / "artwork" / "cache"
+
+    def generated_artwork_root(self) -> Path:
+        return self.root / "artwork" / "generated"
 
     def output_template(self, target_type: str) -> str:
         templates = {

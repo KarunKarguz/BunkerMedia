@@ -18,6 +18,7 @@ BunkerMedia is organized into these runtime layers:
 4. Runtime:
 - `workers.py`: background loops for sync, intelligence, recommendations, queue
 - `service.py`: orchestration and lifecycle
+- `artwork.py`: local artwork cache, thumbnail fetch, and generated poster fallback
 - `network.py`: online/offline detection and sync-window checks
 - `planner.py`: offline horizon queue planning
 - `storage_policy.py`: storage budget enforcement and eviction policy
@@ -42,11 +43,12 @@ BunkerMedia is organized into these runtime layers:
 
 1. URL/feeds are queued or scraped.
 2. Playlist/channel/trending queue jobs materialize resumable batch state before download.
-3. Downloaded and scraped video metadata is upserted.
-4. Intelligence worker generates embeddings from transcript/metadata.
-5. Profile-aware policy filters remove private/explicit items for unauthorized profiles.
-6. Recommender combines preference, history, trending, semantic similarity.
-7. API and CLI expose ranked recommendations, batch state, and media playback.
+3. Downloaded and scraped video metadata is upserted, including thumbnail/artwork references when available.
+4. Artwork is served locally from cached thumbnails or generated fallback posters.
+5. Intelligence worker generates embeddings from transcript/metadata.
+6. Profile-aware policy filters remove private/explicit items for unauthorized profiles.
+7. Recommender combines preference, history, trending, semantic similarity.
+8. API and CLI expose ranked recommendations, batch state, artwork, and media playback.
 
 ## Privacy Model
 

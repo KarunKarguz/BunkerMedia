@@ -36,6 +36,8 @@ class Database:
                     upload_date TEXT,
                     source_url TEXT,
                     local_path TEXT,
+                    thumbnail_url TEXT,
+                    artwork_path TEXT,
                     duration_seconds INTEGER,
                     file_size_bytes INTEGER DEFAULT 0,
                     downloaded INTEGER DEFAULT 0,
@@ -341,14 +343,16 @@ class Database:
                 """
                 INSERT INTO videos (
                     video_id, title, channel, upload_date, source_url, local_path,
-                    duration_seconds, file_size_bytes, downloaded, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    thumbnail_url, artwork_path, duration_seconds, file_size_bytes, downloaded, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(video_id) DO UPDATE SET
                     title=excluded.title,
                     channel=excluded.channel,
                     upload_date=COALESCE(excluded.upload_date, videos.upload_date),
                     source_url=COALESCE(excluded.source_url, videos.source_url),
                     local_path=COALESCE(excluded.local_path, videos.local_path),
+                    thumbnail_url=COALESCE(excluded.thumbnail_url, videos.thumbnail_url),
+                    artwork_path=COALESCE(excluded.artwork_path, videos.artwork_path),
                     duration_seconds=COALESCE(excluded.duration_seconds, videos.duration_seconds),
                     file_size_bytes=MAX(videos.file_size_bytes, COALESCE(excluded.file_size_bytes, 0)),
                     downloaded=MAX(videos.downloaded, excluded.downloaded),
@@ -361,6 +365,8 @@ class Database:
                     meta.upload_date,
                     meta.source_url,
                     meta.local_path,
+                    meta.thumbnail_url,
+                    meta.artwork_path,
                     int(meta.duration_seconds) if meta.duration_seconds is not None else None,
                     int(meta.file_size_bytes) if meta.file_size_bytes is not None else 0,
                     int(meta.downloaded),
@@ -387,6 +393,26 @@ class Database:
                 (local_path, size, self._utc_now(), video_id),
             )
             self.conn.commit()
+
+    def set_video_artwork(
+        self,
+        video_id: str,
+        thumbnail_url: str | None = None,
+        artwork_path: str | None = None,
+    ) -> bool:
+        with self._lock:
+            cursor = self.conn.execute(
+                """
+                UPDATE videos
+                SET thumbnail_url=COALESCE(?, thumbnail_url),
+                    artwork_path=COALESCE(?, artwork_path),
+                    updated_at=?
+                WHERE video_id=?
+                """,
+                (thumbnail_url, artwork_path, self._utc_now(), video_id),
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
 
     def clear_downloaded_state(self, video_id: str) -> None:
         with self._lock:
@@ -1013,6 +1039,7 @@ class Database:
         is_default_profile = 1 if normalized_profile == self.DEFAULT_PROFILE_ID else 0
         query = """
             SELECT v.video_id, v.title, v.channel, v.upload_date, v.local_path, v.downloaded,
+                   v.thumbnail_url, v.artwork_path,
                    v.duration_seconds, v.file_size_bytes,
                    CASE WHEN ?=1 THEN COALESCE(ps.watched, v.watched) ELSE COALESCE(ps.watched, 0) END AS watched,
                    CASE WHEN ?=1 THEN COALESCE(ps.liked, v.liked) ELSE COALESCE(ps.liked, 0) END AS liked,
@@ -1073,6 +1100,7 @@ class Database:
             row = self.conn.execute(
                 """
                 SELECT v.video_id, v.title, v.channel, v.upload_date, v.local_path, v.downloaded,
+                       v.thumbnail_url, v.artwork_path,
                        v.duration_seconds, v.file_size_bytes,
                        CASE WHEN ?=1 THEN COALESCE(ps.watched, v.watched) ELSE COALESCE(ps.watched, 0) END AS watched,
                        CASE WHEN ?=1 THEN COALESCE(ps.liked, v.liked) ELSE COALESCE(ps.liked, 0) END AS liked,
@@ -1289,6 +1317,8 @@ class Database:
                     v.upload_date,
                     v.downloaded,
                     v.local_path,
+                    v.thumbnail_url,
+                    v.artwork_path,
                     v.duration_seconds,
                     v.file_size_bytes,
                     v.privacy_level,
@@ -1330,6 +1360,20 @@ class Database:
                 """
             ).fetchall()
         return {str(row["url"]) for row in rows if row["url"]}
+
+    def list_artwork_candidates(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self.conn.execute(
+                """
+                SELECT video_id, title, channel, thumbnail_url, artwork_path, privacy_level, updated_at
+                FROM videos
+                WHERE artwork_path IS NULL OR artwork_path=''
+                ORDER BY downloaded DESC, updated_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_offline_inventory_stats(self, profile_id: str = DEFAULT_PROFILE_ID) -> dict[str, int]:
         normalized_profile = (profile_id or self.DEFAULT_PROFILE_ID).strip().lower() or self.DEFAULT_PROFILE_ID

@@ -21,6 +21,8 @@ MEDIA_EXTENSIONS = {
     ".wav",
 }
 
+ARTWORK_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"}
+
 
 class LocalFolderProvider(Provider):
     def __init__(self, db: Database, logger: Any, watch_folders: list[Path]) -> None:
@@ -66,6 +68,7 @@ class LocalFolderProvider(Provider):
                 upload_date = self._file_date(path)
                 file_size_bytes = self._file_size(path)
                 channel = path.parent.name or root.name or "Local"
+                artwork_path = self._find_artwork(path)
 
                 meta = VideoMetadata(
                     video_id=vid,
@@ -74,6 +77,7 @@ class LocalFolderProvider(Provider):
                     upload_date=upload_date,
                     source_url=str(path),
                     local_path=str(path),
+                    artwork_path=str(artwork_path) if artwork_path else None,
                     file_size_bytes=file_size_bytes,
                     downloaded=True,
                 )
@@ -104,3 +108,22 @@ class LocalFolderProvider(Provider):
             return int(path.stat().st_size)
         except OSError:
             return 0
+
+    @staticmethod
+    def _find_artwork(path: Path) -> Path | None:
+        direct_candidates = [path.with_suffix(ext) for ext in ARTWORK_EXTENSIONS]
+        folder_candidates = [
+            path.parent / name
+            for name in (
+                "poster.jpg",
+                "poster.png",
+                "folder.jpg",
+                "folder.png",
+                "cover.jpg",
+                "cover.png",
+            )
+        ]
+        for candidate in [*direct_candidates, *folder_candidates]:
+            if candidate.exists() and candidate.is_file():
+                return candidate
+        return None

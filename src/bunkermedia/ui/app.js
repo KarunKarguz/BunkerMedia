@@ -32,6 +32,7 @@ const featuredTitle = document.getElementById("featured-title");
 const featuredMeta = document.getElementById("featured-meta");
 const featuredNote = document.getElementById("featured-note");
 const featuredActions = document.getElementById("featured-actions");
+const featuredBackdrop = document.querySelector(".feature-backdrop");
 
 const statOfflineHours = document.getElementById("stat-offline-hours");
 const statOfflineNote = document.getElementById("stat-offline-note");
@@ -75,6 +76,11 @@ const playerExternalBtn = document.getElementById("player-external-btn");
 const playerCloseBtn = document.getElementById("player-close-btn");
 
 const TV_MODE_KEY = "bunkermedia.tv_mode";
+const FEATURE_BACKDROP_FALLBACK = [
+  "radial-gradient(circle at 72% 24%, rgba(216, 181, 106, 0.36), transparent 20%)",
+  "linear-gradient(145deg, rgba(228, 15, 31, 0.34), transparent 46%)",
+  "linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 60%)",
+].join(", ");
 const videoRegistry = new Map();
 const whyState = new Set();
 let activeVideoId = null;
@@ -250,6 +256,44 @@ function chipText(video, source) {
     return "New";
   }
   return "Metadata";
+}
+
+function artworkUrl(video) {
+  if (!video || !video.artwork_url) {
+    return "";
+  }
+  return String(video.artwork_url);
+}
+
+function applyCardArtwork(poster, art, video) {
+  if (!(poster instanceof HTMLImageElement) || !(art instanceof HTMLElement)) {
+    return;
+  }
+  const url = artworkUrl(video);
+  if (!url) {
+    poster.hidden = true;
+    art.dataset.poster = "fallback";
+    return;
+  }
+  poster.alt = `${video.title || "Untitled"} artwork`;
+  poster.hidden = false;
+  art.dataset.poster = "loading";
+  poster.addEventListener(
+    "load",
+    () => {
+      art.dataset.poster = "loaded";
+    },
+    { once: true }
+  );
+  poster.addEventListener(
+    "error",
+    () => {
+      poster.hidden = true;
+      art.dataset.poster = "fallback";
+    },
+    { once: true }
+  );
+  poster.src = url;
 }
 
 function registerVideo(video, source) {
@@ -431,6 +475,7 @@ function renderVideoCards(container, videos = [], source = "default") {
     const node = cardTemplate.content.cloneNode(true);
     const card = node.querySelector(".video-card");
     const art = node.querySelector(".video-art");
+    const poster = node.querySelector(".video-poster");
     const badge = node.querySelector(".video-badge");
     const chip = node.querySelector(".video-chip");
     const title = node.querySelector(".video-title");
@@ -448,6 +493,7 @@ function renderVideoCards(container, videos = [], source = "default") {
     card.setAttribute("aria-label", registeredVideo.title || "Untitled");
 
     art.style.setProperty("--poster-hue", `${artSeed(registeredVideo)}deg`);
+    applyCardArtwork(poster, art, registeredVideo);
     badge.textContent = videoInitials(registeredVideo);
     chip.textContent = chipText(registeredVideo, source);
     title.textContent = registeredVideo.title || "Untitled";
@@ -669,11 +715,24 @@ function renderFeatured(data) {
     featuredTitle.textContent = "No featured title yet";
     featuredMeta.textContent = "Sync the bunker or queue a source to build your front page.";
     featuredNote.textContent = "Recommendations and downloaded titles will be highlighted here.";
+    if (featuredBackdrop) {
+      featuredBackdrop.style.background = FEATURE_BACKDROP_FALLBACK;
+    }
     return;
   }
 
   featuredTitle.textContent = featured.title || "Untitled";
   featuredMeta.textContent = `${featured.channel || "Unknown"}  |  ${featured.upload_date || "Undated"}  |  ${featured.downloaded ? "Local copy ready" : "Queue available"}`;
+  if (featuredBackdrop) {
+    const url = artworkUrl(featured);
+    featuredBackdrop.style.background = url
+      ? [
+          "linear-gradient(180deg, rgba(6, 6, 8, 0.18), rgba(6, 6, 8, 0.86))",
+          "linear-gradient(145deg, rgba(228, 15, 31, 0.24), transparent 46%)",
+          `url("${url}") center/cover no-repeat`,
+        ].join(", ")
+      : FEATURE_BACKDROP_FALLBACK;
+  }
 
   if (featured.explanation && featured.explanation.components) {
     const parts = featured.explanation.components;
