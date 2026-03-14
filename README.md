@@ -32,7 +32,7 @@ Current maturity: `public beta`. The core platform is working, but the project i
 - Private-vault mode with encrypted-storage health checks, profile PINs, and hidden private media
 - Resumable playlist/channel/trending download batches with persisted progress and startup recovery
 - Local artwork/poster cache with remote thumbnail capture and generated fallback artwork
-- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, library filters, queue/dead-letter controls, recommendation reasoning, inline playback, and installable app-shell behavior
+- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, library filters, queue/dead-letter controls, recommendation reasoning, inline playback, fullscreen OTT player flow, and installable app-shell behavior
 - FastAPI media server
 - Async background workers for sync and queued downloads
 - Offline horizon planner for auto-queuing watch-ready content
@@ -135,6 +135,7 @@ Inside Bunku, TV mode is enabled by default:
 
 - Arrow keys move focus across controls and media rails
 - `Enter` plays local titles or queues discovered items
+- `F` toggles fullscreen playback and `Esc` exits fullscreen before closing the player
 - `Esc` closes the inline player overlay
 - Profiles can be switched from the top bar, including kids-safe profiles
 - Private-vault profiles can require a PIN and hide marked media from normal profiles
@@ -143,6 +144,7 @@ Inside Bunku, TV mode is enabled by default:
 - Dead letters can be retried individually or cleared in bulk from the UI
 - Playlist/channel/trending queue runs retain batch progress and resume after restart or retry
 - Cards and featured rails use local artwork URLs backed by cached thumbnails or generated posters
+- Focus returns to the last rail/item after refresh or playback close instead of jumping back to the top
 - On supported browsers, `Install App` pins Bunku to a phone/tablet/TV home screen
 
 ## API Endpoints

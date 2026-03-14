@@ -822,6 +822,20 @@ select:focus-visible,
   padding: 24px;
 }
 
+.player-shell:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  padding: 28px;
+  border-radius: 0;
+  border: 0;
+  background:
+    radial-gradient(circle at 20% 16%, rgba(216, 181, 106, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(15, 15, 18, 0.94), rgba(3, 3, 4, 0.98));
+  box-shadow: none;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .player-head {
   display: flex;
   justify-content: space-between;
@@ -849,11 +863,23 @@ select:focus-visible,
   background: #050505;
 }
 
+.player-shell:fullscreen .player-stage {
+  height: 100%;
+  border-radius: 26px;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
 .player-stage video {
   display: block;
   width: 100%;
   max-height: 72vh;
   background: #000;
+}
+
+.player-shell:fullscreen .player-stage video {
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
 }
 
 body.tv-mode .video-card:hover,

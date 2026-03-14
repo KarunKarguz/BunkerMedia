@@ -7,6 +7,17 @@
 - Reassessed the product roadmap around a real `1.0` bar for a privacy-first local OTT appliance.
 - Added a dedicated product strategy document to clarify positioning, user types, principles, and release scope.
 
+## [0.2.8] - 2026-03-14
+
+### Added
+
+- Fullscreen Bunku player controls with keyboard toggle support and fullscreen-safe player shell styling.
+
+### Changed
+
+- TV-mode navigation now remembers focus by rail/list position so playback close and home refresh return the user to the last relevant item.
+- Roadmap now marks fullscreen playback flow as complete for the `1.0` UX release bar.
+
 ## [0.2.7] - 2026-03-14
 
 ### Added

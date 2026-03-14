@@ -26,6 +26,7 @@ A household user should open one local URL and immediately:
 
 3. Player
 - Resume position
+- Fullscreen OTT playback shell
 - Subtitle/audio selection
 - Like/Dislike/Not Interested controls
 
@@ -71,3 +72,4 @@ When network is unavailable:
 - Private-vault mode hides marked media from non-vault profiles.
 - UI should surface encrypted-storage health as an appliance status signal.
 - Sensitive content protection is based on encrypted storage plus profile/vault visibility rules, not on misleading “zero-cost compression” claims.
+- TV/keyboard mode should preserve focus memory across rail refreshes and player open/close cycles.

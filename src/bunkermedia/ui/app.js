@@ -68,10 +68,13 @@ const cardTemplate = document.getElementById("video-card-template");
 const jobTemplate = document.getElementById("job-row-template");
 const playerModal = document.getElementById("player-modal");
 const playerBackdrop = document.getElementById("player-backdrop");
+const playerShell = document.getElementById("player-shell");
+const playerStage = document.getElementById("player-stage");
 const playerTitle = document.getElementById("player-title");
 const playerMeta = document.getElementById("player-meta");
 const playerVideo = document.getElementById("player-video");
 const playerWatchedBtn = document.getElementById("player-watched-btn");
+const playerFullscreenBtn = document.getElementById("player-fullscreen-btn");
 const playerExternalBtn = document.getElementById("player-external-btn");
 const playerCloseBtn = document.getElementById("player-close-btn");
 
@@ -82,9 +85,11 @@ const FEATURE_BACKDROP_FALLBACK = [
   "linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 60%)",
 ].join(", ");
 const videoRegistry = new Map();
+const focusMemory = new Map();
 const whyState = new Set();
 let activeVideoId = null;
 let lastFocusedElement = null;
+let lastFocusSnapshot = null;
 let tvModeEnabled = localStorage.getItem(TV_MODE_KEY) !== "off";
 let currentProfileId = null;
 let deferredInstallPrompt = null;
@@ -310,6 +315,202 @@ function streamUrl(videoId) {
   return `/stream/${encodeURIComponent(videoId)}`;
 }
 
+function visibleElement(element) {
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+  if (element.closest("[hidden]")) {
+    return false;
+  }
+  const style = window.getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+  return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+}
+
+function escapeCssValue(value) {
+  const text = String(value || "");
+  if (window.CSS && typeof window.CSS.escape === "function") {
+    return window.CSS.escape(text);
+  }
+  return text.replace(/["\\]/g, "\\$&");
+}
+
+function focusMetadata(element) {
+  if (!(element instanceof HTMLElement)) {
+    return null;
+  }
+  const grouped =
+    element.closest("[data-focus-group]") instanceof HTMLElement ? element.closest("[data-focus-group]") : null;
+  if (grouped) {
+    return {
+      group: grouped.dataset.focusGroup || "",
+      index: Number(grouped.dataset.focusIndex || 0),
+      key: grouped.dataset.focusKey || "",
+    };
+  }
+  if (element.id) {
+    return { elementId: element.id };
+  }
+  return null;
+}
+
+function rememberFocusTarget(element) {
+  const metadata = focusMetadata(element);
+  if (!metadata) {
+    return;
+  }
+  if (metadata.group) {
+    focusMemory.set(metadata.group, metadata);
+  }
+  if (!playerModal.contains(element)) {
+    lastFocusSnapshot = metadata;
+  }
+}
+
+function visibleFocusGroupElements(groupId) {
+  return visibleNavigableElements()
+    .filter((element) => element.dataset.focusGroup === groupId)
+    .sort((left, right) => Number(left.dataset.focusIndex || 0) - Number(right.dataset.focusIndex || 0));
+}
+
+function visibleFocusGroups() {
+  const seen = new Set();
+  const groups = [];
+  visibleNavigableElements().forEach((element) => {
+    const groupId = element.dataset.focusGroup;
+    if (groupId && !seen.has(groupId)) {
+      seen.add(groupId);
+      groups.push(groupId);
+    }
+  });
+  return groups;
+}
+
+function restoreFocusSnapshot(snapshot) {
+  if (!snapshot) {
+    return false;
+  }
+
+  if (snapshot.elementId) {
+    const target = document.getElementById(snapshot.elementId);
+    if (visibleElement(target)) {
+      focusElement(target);
+      return true;
+    }
+  }
+
+  if (!snapshot.group) {
+    return false;
+  }
+
+  const preferred = snapshot.key
+    ? document.querySelector(
+        `[data-focus-group="${escapeCssValue(snapshot.group)}"][data-focus-key="${escapeCssValue(snapshot.key)}"]`
+      )
+    : null;
+  if (visibleElement(preferred)) {
+    focusElement(preferred);
+    return true;
+  }
+
+  const groupElements = visibleFocusGroupElements(snapshot.group);
+  if (!groupElements.length) {
+    return false;
+  }
+  const index = Math.min(Math.max(Number(snapshot.index || 0), 0), groupElements.length - 1);
+  focusElement(groupElements[index]);
+  return true;
+}
+
+function groupedFocusTarget(direction) {
+  const activeGroupElement =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement.closest("[data-focus-group]")
+      : null;
+  if (!(activeGroupElement instanceof HTMLElement)) {
+    return null;
+  }
+
+  const groupId = activeGroupElement.dataset.focusGroup || "";
+  if (!groupId) {
+    return null;
+  }
+
+  const groupElements = visibleFocusGroupElements(groupId);
+  if (!groupElements.length) {
+    return null;
+  }
+  const currentIndex = groupElements.indexOf(activeGroupElement);
+  if (currentIndex < 0) {
+    return null;
+  }
+
+  if (direction === "left" || direction === "right") {
+    const nextIndex = currentIndex + (direction === "right" ? 1 : -1);
+    return nextIndex >= 0 && nextIndex < groupElements.length ? groupElements[nextIndex] : null;
+  }
+
+  const groups = visibleFocusGroups();
+  const groupIndex = groups.indexOf(groupId);
+  if (groupIndex < 0) {
+    return null;
+  }
+  const nextGroupId = groups[groupIndex + (direction === "down" ? 1 : -1)];
+  if (!nextGroupId) {
+    return null;
+  }
+  const nextGroupElements = visibleFocusGroupElements(nextGroupId);
+  if (!nextGroupElements.length) {
+    return null;
+  }
+  const remembered = focusMemory.get(nextGroupId);
+  const preferredIndex = remembered ? Number(remembered.index || 0) : currentIndex;
+  return nextGroupElements[Math.min(Math.max(preferredIndex, 0), nextGroupElements.length - 1)] || null;
+}
+
+function fullscreenElement() {
+  return document.fullscreenElement || null;
+}
+
+function playerIsFullscreen() {
+  return fullscreenElement() === playerShell;
+}
+
+function updatePlayerFullscreenButton() {
+  if (!(playerFullscreenBtn instanceof HTMLElement)) {
+    return;
+  }
+  const fullscreen = playerIsFullscreen();
+  playerFullscreenBtn.textContent = fullscreen ? "Exit Fullscreen" : "Fullscreen";
+  playerFullscreenBtn.setAttribute("aria-pressed", String(fullscreen));
+}
+
+async function enterPlayerFullscreen() {
+  if (!(playerShell instanceof HTMLElement) || playerIsFullscreen()) {
+    return;
+  }
+  if (typeof playerShell.requestFullscreen === "function") {
+    await playerShell.requestFullscreen();
+  }
+}
+
+async function exitPlayerFullscreen() {
+  if (!playerIsFullscreen()) {
+    return;
+  }
+  if (typeof document.exitFullscreen === "function") {
+    await document.exitFullscreen();
+  }
+}
+
+async function togglePlayerFullscreen() {
+  if (playerIsFullscreen()) {
+    await exitPlayerFullscreen();
+  } else {
+    await enterPlayerFullscreen();
+  }
+}
+
 async function markWatched(videoId, completed = true) {
   if (!videoId) {
     return;
@@ -329,6 +530,7 @@ function openPlayer(videoId) {
   }
   activeVideoId = videoId;
   lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  rememberFocusTarget(lastFocusedElement);
   playerTitle.textContent = video.title || "Untitled";
   playerMeta.textContent = `${video.channel || "Unknown"}  |  ${video.upload_date || "Undated"}  |  Local playback`;
   playerExternalBtn.dataset.videoId = videoId;
@@ -337,22 +539,33 @@ function openPlayer(videoId) {
   playerVideo.dataset.videoId = videoId;
   playerModal.hidden = false;
   document.body.classList.add("modal-open");
+  updatePlayerFullscreenButton();
   playerCloseBtn.focus();
   playerVideo.play().catch(() => {});
 }
 
-function closePlayer() {
+async function closePlayer() {
   if (playerModal.hidden) {
     return;
   }
+  await exitPlayerFullscreen().catch(() => {});
   playerVideo.pause();
   playerVideo.removeAttribute("src");
   playerVideo.load();
   playerModal.hidden = true;
   document.body.classList.remove("modal-open");
   activeVideoId = null;
-  if (lastFocusedElement) {
-    lastFocusedElement.focus();
+  updatePlayerFullscreenButton();
+  if (visibleElement(lastFocusedElement)) {
+    focusElement(lastFocusedElement);
+    return;
+  }
+  if (restoreFocusSnapshot(lastFocusSnapshot)) {
+    return;
+  }
+  const firstTarget = visibleNavigableElements()[0];
+  if (firstTarget) {
+    focusElement(firstTarget);
   }
 }
 
@@ -395,14 +608,9 @@ function visibleNavigableElements() {
       return false;
     }
     if (playerModal.hidden === false) {
-      return playerModal.contains(element);
+      return playerModal.contains(element) && visibleElement(element);
     }
-    if (element.closest("[hidden]")) {
-      return false;
-    }
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    return visibleElement(element);
   });
 }
 
@@ -459,7 +667,7 @@ function moveFocus(direction) {
   if (!elements.length) {
     return;
   }
-  const target = pickSpatialTarget(elements, document.activeElement, direction) || elements[0];
+  const target = groupedFocusTarget(direction) || pickSpatialTarget(elements, document.activeElement, direction) || elements[0];
   focusElement(target);
 }
 
@@ -470,7 +678,7 @@ function renderVideoCards(container, videos = [], source = "default") {
     return;
   }
 
-  videos.forEach((video) => {
+  videos.forEach((video, index) => {
     const registeredVideo = registerVideo(video, source) || video;
     const node = cardTemplate.content.cloneNode(true);
     const card = node.querySelector(".video-card");
@@ -489,6 +697,9 @@ function renderVideoCards(container, videos = [], source = "default") {
     card.dataset.sourceUrl = registeredVideo.source_url || "";
     card.dataset.targetType = "auto";
     card.dataset.downloaded = String(Boolean(registeredVideo.downloaded || registeredVideo.local_path));
+    card.dataset.focusGroup = container.id || source;
+    card.dataset.focusIndex = String(index);
+    card.dataset.focusKey = registeredVideo.video_id || registeredVideo.source_url || `${source}-${index}`;
     card.setAttribute("role", "button");
     card.setAttribute("aria-label", registeredVideo.title || "Untitled");
 
@@ -623,7 +834,7 @@ function renderJobs(container, jobs, isDeadLetter = false) {
     return;
   }
 
-  jobs.forEach((job) => {
+  jobs.forEach((job, index) => {
     const node = jobTemplate.content.cloneNode(true);
     const row = node.querySelector(".job-row");
     const state = node.querySelector(".job-state");
@@ -634,6 +845,9 @@ function renderJobs(container, jobs, isDeadLetter = false) {
 
     row.tabIndex = 0;
     row.setAttribute("role", "group");
+    row.dataset.focusGroup = container.id || (isDeadLetter ? "deadletters" : "queue");
+    row.dataset.focusIndex = String(index);
+    row.dataset.focusKey = String(job.id || `${job.url}-${index}`);
 
     state.textContent = isDeadLetter ? "Dead" : job.status || "pending";
     priority.textContent = `P${job.priority != null ? job.priority : 0}`;
@@ -863,6 +1077,7 @@ function renderPrivacy(data) {
 
 async function loadHome() {
   setStatus("Refreshing bunker...", "warn");
+  const focusSnapshot = !playerModal.hidden ? lastFocusSnapshot : focusMetadata(document.activeElement);
   try {
     const data = await fetchJson("/bunku/data/home?limit=16");
     renderProfiles(data.active_profile || null, data.profiles || []);
@@ -884,14 +1099,12 @@ async function loadHome() {
       setStatus("Online and syncing", "good");
     }
 
-    if (
-      tvModeEnabled &&
-      playerModal.hidden &&
-      (!document.activeElement || document.activeElement === document.body)
-    ) {
-      const firstTarget = visibleNavigableElements()[0];
-      if (firstTarget) {
-        focusElement(firstTarget);
+    if (tvModeEnabled && playerModal.hidden) {
+      if (!restoreFocusSnapshot(focusSnapshot) && !restoreFocusSnapshot(lastFocusSnapshot)) {
+        const firstTarget = visibleNavigableElements()[0];
+        if (firstTarget) {
+          focusElement(firstTarget);
+        }
       }
     }
   } catch (err) {
@@ -1228,8 +1441,20 @@ deadlettersClearAllBtn.addEventListener("click", async () => {
   }
 });
 
-playerBackdrop.addEventListener("click", closePlayer);
-playerCloseBtn.addEventListener("click", closePlayer);
+playerBackdrop.addEventListener("click", () => {
+  void closePlayer();
+});
+playerCloseBtn.addEventListener("click", () => {
+  void closePlayer();
+});
+playerFullscreenBtn.addEventListener("click", async () => {
+  try {
+    await togglePlayerFullscreen();
+  } catch (err) {
+    console.error(err);
+    setStatus("Fullscreen not available", "warn");
+  }
+});
 playerExternalBtn.addEventListener("click", () => {
   if (activeVideoId) {
     window.open(streamUrl(activeVideoId), "_blank", "noopener");
@@ -1239,10 +1464,17 @@ playerWatchedBtn.addEventListener("click", async () => {
   try {
     await markWatched(activeVideoId, true);
     setStatus("Marked as watched", "good");
-    closePlayer();
+    await closePlayer();
   } catch (err) {
     console.error(err);
     setStatus("Watch update failed", "bad");
+  }
+});
+playerStage.addEventListener("dblclick", async () => {
+  try {
+    await togglePlayerFullscreen();
+  } catch (err) {
+    console.error(err);
   }
 });
 playerVideo.addEventListener("ended", async () => {
@@ -1253,11 +1485,32 @@ playerVideo.addEventListener("ended", async () => {
     console.error(err);
   }
 });
+document.addEventListener("fullscreenchange", updatePlayerFullscreenButton);
+document.addEventListener("focusin", (event) => {
+  if (event.target instanceof HTMLElement) {
+    rememberFocusTarget(event.target);
+  }
+});
 
 document.addEventListener("keydown", async (event) => {
   if (event.key === "Escape" && !playerModal.hidden) {
     event.preventDefault();
-    closePlayer();
+    if (playerIsFullscreen()) {
+      await exitPlayerFullscreen().catch(() => {});
+    } else {
+      await closePlayer();
+    }
+    return;
+  }
+
+  if (!playerModal.hidden && event.key.toLowerCase() === "f" && !isTypingTarget(event.target)) {
+    event.preventDefault();
+    try {
+      await togglePlayerFullscreen();
+    } catch (err) {
+      console.error(err);
+      setStatus("Fullscreen not available", "warn");
+    }
     return;
   }
 
@@ -1315,7 +1568,21 @@ window.addEventListener("appinstalled", () => {
   setStatus("Bunku installed on this device", "good");
 });
 
+[
+  [playerWatchedBtn, 0, "watched"],
+  [playerFullscreenBtn, 1, "fullscreen"],
+  [playerExternalBtn, 2, "external"],
+  [playerCloseBtn, 3, "close"],
+].forEach(([element, index, key]) => {
+  if (element instanceof HTMLElement) {
+    element.dataset.focusGroup = "player-controls";
+    element.dataset.focusIndex = String(index);
+    element.dataset.focusKey = key;
+  }
+});
+
 setTvMode(tvModeEnabled);
 setInstallAvailability(false);
 registerShellServiceWorker();
+updatePlayerFullscreenButton();
 loadHome();
