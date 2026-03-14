@@ -53,14 +53,19 @@ class ProfileCreatePayload(BaseModel):
     is_kids: bool = False
     can_access_private: bool = False
     pin: str | None = Field(default=None, min_length=4, max_length=32)
+    allow_channels: list[str] | None = None
+    block_channels: list[str] | None = None
 
 
 class ProfileUpdatePayload(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=48)
     is_kids: bool | None = None
     can_access_private: bool | None = None
+    current_pin: str | None = Field(default=None, min_length=4, max_length=32)
     pin: str | None = Field(default=None, min_length=4, max_length=32)
     clear_pin: bool = False
+    allow_channels: list[str] | None = None
+    block_channels: list[str] | None = None
 
 
 class ProfileSelectPayload(BaseModel):
@@ -86,7 +91,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         finally:
             await service.shutdown()
 
-    app = FastAPI(title="BunkerMedia", version="0.2.7", lifespan=lifespan)
+    app = FastAPI(title="BunkerMedia", version="0.2.9", lifespan=lifespan)
     app.state.service = service
 
     @app.middleware("http")
@@ -345,6 +350,8 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             is_kids=payload.is_kids,
             can_access_private=payload.can_access_private,
             pin=payload.pin,
+            allow_channels=payload.allow_channels,
+            block_channels=payload.block_channels,
         )
         return {"status": "created", "profile": profile}
 
@@ -355,11 +362,14 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             display_name=payload.display_name,
             is_kids=payload.is_kids,
             can_access_private=payload.can_access_private,
+            current_pin=payload.current_pin,
             pin=payload.pin,
             clear_pin=payload.clear_pin,
+            allow_channels=payload.allow_channels,
+            block_channels=payload.block_channels,
         )
         if not profile:
-            raise HTTPException(status_code=404, detail="Profile not found")
+            raise HTTPException(status_code=403, detail="Profile not found or PIN invalid")
         return {"status": "updated", "profile": profile}
 
     @app.post("/profiles/{profile_id}/select")

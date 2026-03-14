@@ -33,6 +33,7 @@
           <div class="profile-controls">
             <select id="profile-select" aria-label="Profile selector"></select>
             <button id="profile-add-btn" class="btn btn-gold topbar-btn" type="button">New Profile</button>
+            <button id="profile-manage-btn" class="btn btn-ghost topbar-btn" type="button">Manage</button>
           </div>
           <form id="profile-form" class="profile-form" hidden>
             <input id="profile-name" type="text" maxlength="48" placeholder="Profile name" />
@@ -46,6 +47,32 @@
             </label>
             <input id="profile-pin" type="password" maxlength="32" placeholder="Optional PIN (4+ digits)" />
             <button class="btn btn-primary" type="submit">Create</button>
+          </form>
+          <form id="profile-settings-form" class="profile-form profile-settings-form" hidden>
+            <input
+              id="profile-allow-channels"
+              type="text"
+              maxlength="240"
+              placeholder="Allow channels (comma separated)"
+            />
+            <input
+              id="profile-block-channels"
+              type="text"
+              maxlength="240"
+              placeholder="Block channels (comma separated)"
+            />
+            <input
+              id="profile-current-pin"
+              type="password"
+              maxlength="32"
+              placeholder="Current PIN (required to change/remove PIN)"
+            />
+            <input id="profile-new-pin" type="password" maxlength="32" placeholder="New PIN (optional)" />
+            <label class="checkbox-pill">
+              <input id="profile-clear-pin" type="checkbox" />
+              <span>Remove PIN</span>
+            </label>
+            <button class="btn btn-gold" type="submit">Save Profile</button>
           </form>
         </div>
         <button id="tv-mode-btn" class="btn btn-ghost topbar-btn" type="button" aria-pressed="false">

@@ -7,6 +7,19 @@
 - Reassessed the product roadmap around a real `1.0` bar for a privacy-first local OTT appliance.
 - Added a dedicated product strategy document to clarify positioning, user types, principles, and release scope.
 
+## [0.2.9] - 2026-03-14
+
+### Added
+
+- Per-profile channel allow/block controls for kids-safe and vault-capable household profiles.
+- Top-bar Bunku profile management form for channel policy editing and PIN rotation/removal.
+
+### Changed
+
+- Profile updates now require the current PIN before rotating or removing an existing PIN.
+- Recommendation filtering now respects per-profile channel rules in addition to privacy and kids-mode checks.
+- Roadmap now marks PIN rotation and kids allow/block controls as complete `1.0` privacy-work items.
+
 ## [0.2.8] - 2026-03-14
 
 ### Added

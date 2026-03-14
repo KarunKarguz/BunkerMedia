@@ -27,6 +27,8 @@ from bunkermedia.workers import WorkerManager
 
 
 class BunkerService:
+    PROFILE_CHANNEL_ALLOW = "channel_allow"
+    PROFILE_CHANNEL_BLOCK = "channel_block"
     KIDS_BLOCK_KEYWORDS = {
         "kill",
         "killing",
@@ -189,13 +191,26 @@ class BunkerService:
         profile_id = str(active.get("profile_id") or self.db.DEFAULT_PROFILE_ID)
         is_kids = bool(active.get("is_kids"))
         can_access_private = bool(active.get("can_access_private"))
-        return await self.recommender.recommend(
+        recommendations = await self.recommender.recommend(
             limit=limit,
             explain=explain,
             profile_id=profile_id,
             is_kids=is_kids,
             can_access_private=can_access_private,
         )
+        filtered = []
+        for item in recommendations:
+            candidate = self.db.get_video(item.video_id, profile_id=profile_id) or {
+                "video_id": item.video_id,
+                "title": item.title,
+                "channel": item.channel,
+                "privacy_level": "standard",
+            }
+            if self._video_allowed_for_profile(candidate, active):
+                filtered.append(item)
+            if len(filtered) >= limit:
+                break
+        return filtered
 
     def list_download_jobs(self, status: str | None = None, limit: int = 100):
         return self.db.list_download_jobs(status=status, limit=limit)
@@ -374,14 +389,14 @@ class BunkerService:
         }
 
     def list_profiles(self) -> list[dict[str, object]]:
-        return [self._public_profile(profile) for profile in self.db.list_profiles()]
+        return [self._profile_with_policy(profile) for profile in self.db.list_profiles()]
 
     def get_active_profile(self) -> dict[str, object]:
         profile = self.db.get_profile(self.db.get_active_profile_id())
         if profile:
-            return self._public_profile(profile)
+            return self._profile_with_policy(profile)
         fallback = self.db.set_active_profile(self.db.DEFAULT_PROFILE_ID)
-        return self._public_profile(fallback or {
+        return self._profile_with_policy(fallback or {
             "profile_id": self.db.DEFAULT_PROFILE_ID,
             "display_name": "Default",
             "is_kids": False,
@@ -396,6 +411,8 @@ class BunkerService:
         is_kids: bool = False,
         can_access_private: bool = False,
         pin: str | None = None,
+        allow_channels: list[str] | None = None,
+        block_channels: list[str] | None = None,
     ) -> dict[str, object]:
         profile = self.db.create_profile(
             display_name=display_name,
@@ -403,7 +420,21 @@ class BunkerService:
             can_access_private=can_access_private,
             pin_hash=self._hash_pin(pin) if pin else None,
         )
-        return self._public_profile(profile)
+        profile_id = str(profile.get("profile_id") or "")
+        if profile_id:
+            if allow_channels is not None:
+                self.db.replace_preferences(
+                    self.PROFILE_CHANNEL_ALLOW,
+                    self._normalize_channel_names(allow_channels),
+                    profile_id=profile_id,
+                )
+            if block_channels is not None:
+                self.db.replace_preferences(
+                    self.PROFILE_CHANNEL_BLOCK,
+                    self._normalize_channel_names(block_channels),
+                    profile_id=profile_id,
+                )
+        return self._profile_with_policy(profile)
 
     def update_profile(
         self,
@@ -413,7 +444,17 @@ class BunkerService:
         can_access_private: bool | None = None,
         pin: str | None = None,
         clear_pin: bool = False,
+        current_pin: str | None = None,
+        allow_channels: list[str] | None = None,
+        block_channels: list[str] | None = None,
     ) -> dict[str, object] | None:
+        existing = self.db.get_profile(profile_id)
+        if not existing:
+            return None
+        expected_hash = str(existing.get("pin_hash") or "")
+        if expected_hash and (pin or clear_pin):
+            if not current_pin or self._hash_pin(current_pin) != expected_hash:
+                return None
         pin_hash: str | None = None
         if clear_pin:
             pin_hash = ""
@@ -426,7 +467,22 @@ class BunkerService:
             can_access_private=can_access_private,
             pin_hash=pin_hash,
         )
-        return self._public_profile(profile) if profile else None
+        if not profile:
+            return None
+        normalized_profile_id = str(profile.get("profile_id") or profile_id)
+        if allow_channels is not None:
+            self.db.replace_preferences(
+                self.PROFILE_CHANNEL_ALLOW,
+                self._normalize_channel_names(allow_channels),
+                profile_id=normalized_profile_id,
+            )
+        if block_channels is not None:
+            self.db.replace_preferences(
+                self.PROFILE_CHANNEL_BLOCK,
+                self._normalize_channel_names(block_channels),
+                profile_id=normalized_profile_id,
+            )
+        return self._profile_with_policy(profile)
 
     def select_profile(self, profile_id: str, pin: str | None = None) -> dict[str, object] | None:
         profile = self.db.get_profile(profile_id)
@@ -527,6 +583,14 @@ class BunkerService:
             return False
         if bool(profile.get("is_kids")) and privacy_level == "explicit":
             return False
+        channel_name = self._normalize_channel_name(video.get("channel"))
+        blocked_channels = {str(item).strip().lower() for item in profile.get("blocked_channels", []) if str(item).strip()}
+        if channel_name and channel_name in blocked_channels:
+            return False
+        allow_channels = {str(item).strip().lower() for item in profile.get("allowed_channels", []) if str(item).strip()}
+        if allow_channels and (bool(profile.get("is_kids")) or bool(profile.get("can_access_private"))):
+            if not channel_name or channel_name not in allow_channels:
+                return False
         if not bool(profile.get("is_kids")):
             return True
         text = " ".join(
@@ -543,6 +607,27 @@ class BunkerService:
         salt = str(self.config.database_path).encode("utf-8")
         derived = hashlib.pbkdf2_hmac("sha256", pin.strip().encode("utf-8"), salt, 120000)
         return derived.hex()
+
+    def _profile_with_policy(self, profile: dict[str, object] | None) -> dict[str, object]:
+        payload = self._public_profile(profile)
+        profile_id = str(payload.get("profile_id") or self.db.DEFAULT_PROFILE_ID)
+        allowed_channels = self._profile_channel_list(profile_id, self.PROFILE_CHANNEL_ALLOW)
+        blocked_channels = self._profile_channel_list(profile_id, self.PROFILE_CHANNEL_BLOCK)
+        payload["allowed_channels"] = allowed_channels
+        payload["blocked_channels"] = blocked_channels
+        payload["channel_allow_count"] = len(allowed_channels)
+        payload["channel_block_count"] = len(blocked_channels)
+        return payload
+
+    def _profile_channel_list(self, profile_id: str, pref_type: str) -> list[str]:
+        return sorted(self.db.get_preferences(pref_type, profile_id=profile_id).keys())
+
+    @staticmethod
+    def _normalize_channel_name(value: object) -> str:
+        return str(value or "").strip().lower()
+
+    def _normalize_channel_names(self, values: list[str]) -> list[str]:
+        return sorted({self._normalize_channel_name(value) for value in values if self._normalize_channel_name(value)})
 
     @staticmethod
     def _public_profile(profile: dict[str, object] | None) -> dict[str, object]:

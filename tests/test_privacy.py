@@ -90,6 +90,65 @@ class PrivacyTests(unittest.TestCase):
 
             asyncio.run(_run())
 
+    def test_pin_rotation_and_channel_rules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg_path = root / "config.yaml"
+            cfg_path.write_text(
+                "\n".join(
+                    [
+                        "download_path: ./media",
+                        "database_path: ./bunkermedia.db",
+                        "download_archive: ./archive.txt",
+                        "auto_start_workers: false",
+                        "force_offline_mode: true",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            async def _run() -> None:
+                service = BunkerService(cfg_path)
+                await service.initialize()
+                service.db.upsert_video(
+                    VideoMetadata(video_id="allow-1", title="Alpha Show", channel="Alpha", downloaded=False)
+                )
+                service.db.upsert_video(
+                    VideoMetadata(video_id="other-1", title="Beta Show", channel="Beta", downloaded=False)
+                )
+                service.db.upsert_video(
+                    VideoMetadata(video_id="block-1", title="Blocked Show", channel="Blocked", downloaded=False)
+                )
+
+                profile = service.create_profile("Kids Locked", is_kids=True, pin="2468")
+                self.assertIsNotNone(profile)
+                self.assertIsNone(
+                    service.update_profile(
+                        str(profile["profile_id"]),
+                        pin="1357",
+                        current_pin="0000",
+                    )
+                )
+                updated = service.update_profile(
+                    str(profile["profile_id"]),
+                    pin="1357",
+                    current_pin="2468",
+                    allow_channels=["Alpha"],
+                    block_channels=["Blocked"],
+                )
+                self.assertIsNotNone(updated)
+                self.assertEqual(updated["allowed_channels"], ["alpha"])
+                self.assertEqual(updated["blocked_channels"], ["blocked"])
+
+                self.assertIsNone(service.select_profile(str(profile["profile_id"]), pin="2468"))
+                self.assertIsNotNone(service.select_profile(str(profile["profile_id"]), pin="1357"))
+
+                visible = service.list_videos(limit=20)
+                self.assertEqual([item["video_id"] for item in visible], ["allow-1"])
+                await service.shutdown()
+
+            asyncio.run(_run())
+
 
 if __name__ == "__main__":
     unittest.main()

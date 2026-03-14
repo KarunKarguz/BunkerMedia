@@ -334,6 +334,31 @@ class IntegrationTests(unittest.TestCase):
                         self.assertEqual(selected.status_code, 200)
                         self.assertEqual(selected.json()["profile"]["profile_id"], profile_id)
 
+                        invalid_update = await client.patch(
+                            f"/profiles/{profile_id}",
+                            json={"current_pin": "0000", "pin": "1357"},
+                        )
+                        self.assertEqual(invalid_update.status_code, 403)
+
+                        updated_profile = await client.patch(
+                            f"/profiles/{profile_id}",
+                            json={
+                                "current_pin": "2468",
+                                "pin": "1357",
+                                "allow_channels": ["local_media"],
+                                "block_channels": ["blocked-channel"],
+                            },
+                        )
+                        self.assertEqual(updated_profile.status_code, 200)
+                        self.assertEqual(updated_profile.json()["profile"]["allowed_channels"], ["local_media"])
+                        self.assertEqual(updated_profile.json()["profile"]["blocked_channels"], ["blocked-channel"])
+
+                        old_pin_denied = await client.post(f"/profiles/{profile_id}/select", json={"pin": "2468"})
+                        self.assertEqual(old_pin_denied.status_code, 403)
+
+                        rotated = await client.post(f"/profiles/{profile_id}/select", json={"pin": "1357"})
+                        self.assertEqual(rotated.status_code, 200)
+
             asyncio.run(_exercise_api())
 
     def test_api_queue_worker_recommendation_flow_with_mocked_downloader(self):

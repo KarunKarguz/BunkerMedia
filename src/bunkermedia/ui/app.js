@@ -1,11 +1,18 @@
 const statusPill = document.getElementById("status-pill");
 const profileSelect = document.getElementById("profile-select");
 const profileAddBtn = document.getElementById("profile-add-btn");
+const profileManageBtn = document.getElementById("profile-manage-btn");
 const profileForm = document.getElementById("profile-form");
+const profileSettingsForm = document.getElementById("profile-settings-form");
 const profileName = document.getElementById("profile-name");
 const profileKids = document.getElementById("profile-kids");
 const profilePrivate = document.getElementById("profile-private");
 const profilePin = document.getElementById("profile-pin");
+const profileAllowChannels = document.getElementById("profile-allow-channels");
+const profileBlockChannels = document.getElementById("profile-block-channels");
+const profileCurrentPin = document.getElementById("profile-current-pin");
+const profileNewPin = document.getElementById("profile-new-pin");
+const profileClearPin = document.getElementById("profile-clear-pin");
 const kidsBadge = document.getElementById("kids-badge");
 const tvModeBtn = document.getElementById("tv-mode-btn");
 const refreshBtn = document.getElementById("refresh-btn");
@@ -133,6 +140,34 @@ function setInstallAvailability(available) {
   installBtn.hidden = !available;
 }
 
+function selectedProfile() {
+  return profileDirectory.find((profile) => profile.profile_id === currentProfileId) || null;
+}
+
+function channelsText(values = []) {
+  return Array.isArray(values) ? values.join(", ") : "";
+}
+
+function parseChannels(value) {
+  return Array.from(
+    new Set(
+      String(value || "")
+        .split(/[,\n]/)
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+}
+
+function syncProfileSettingsForm(profile = null) {
+  const selected = profile || selectedProfile();
+  profileAllowChannels.value = channelsText(selected && selected.allowed_channels);
+  profileBlockChannels.value = channelsText(selected && selected.blocked_channels);
+  profileCurrentPin.value = "";
+  profileNewPin.value = "";
+  profileClearPin.checked = false;
+}
+
 function renderProfiles(activeProfile, profiles = []) {
   profileDirectory = profiles || [];
   currentProfileId = activeProfile && activeProfile.profile_id ? activeProfile.profile_id : null;
@@ -150,6 +185,12 @@ function renderProfiles(activeProfile, profiles = []) {
     if (profile.pin_required) {
       labels.push("PIN");
     }
+    if (Number(profile.channel_allow_count || 0) > 0) {
+      labels.push(`Allow ${profile.channel_allow_count}`);
+    }
+    if (Number(profile.channel_block_count || 0) > 0) {
+      labels.push(`Block ${profile.channel_block_count}`);
+    }
     option.textContent = labels.join(" | ");
     if (profile.profile_id === currentProfileId) {
       option.selected = true;
@@ -157,6 +198,7 @@ function renderProfiles(activeProfile, profiles = []) {
     profileSelect.appendChild(option);
   });
   setKidsModeBadge(Boolean(activeProfile && activeProfile.is_kids));
+  syncProfileSettingsForm(activeProfile || null);
 }
 
 function formatHours(seconds = 0) {
@@ -1268,6 +1310,16 @@ async function createProfile(displayName, isKids, canAccessPrivate, pin) {
   await loadHome();
 }
 
+async function saveProfileSettings(profileId, payload) {
+  const result = await fetchJson(`/profiles/${encodeURIComponent(profileId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  setStatus(`Updated profile ${result.profile.display_name}`, "good");
+  syncProfileSettingsForm(result.profile);
+  await loadHome();
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, {
     headers: {
@@ -1303,9 +1355,19 @@ tvModeBtn.addEventListener("click", () => {
 });
 
 profileAddBtn.addEventListener("click", () => {
+  profileSettingsForm.hidden = true;
   profileForm.hidden = !profileForm.hidden;
   if (!profileForm.hidden) {
     profileName.focus();
+  }
+});
+
+profileManageBtn.addEventListener("click", () => {
+  profileForm.hidden = true;
+  profileSettingsForm.hidden = !profileSettingsForm.hidden;
+  syncProfileSettingsForm();
+  if (!profileSettingsForm.hidden) {
+    profileAllowChannels.focus();
   }
 });
 
@@ -1316,6 +1378,46 @@ profileSelect.addEventListener("change", async () => {
     console.error(err);
     setStatus("Profile switch failed", "bad");
     await loadHome();
+  }
+});
+
+profileSettingsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const profile = selectedProfile();
+  if (!profile) {
+    setStatus("No active profile selected", "warn");
+    return;
+  }
+  const allowChannels = parseChannels(profileAllowChannels.value);
+  const blockChannels = parseChannels(profileBlockChannels.value);
+  const currentPin = profileCurrentPin.value.trim();
+  const newPin = profileNewPin.value.trim();
+  const clearPin = Boolean(profileClearPin.checked);
+
+  if (newPin && newPin.length < 4) {
+    setStatus("New PIN must be at least 4 characters", "warn");
+    return;
+  }
+  if (newPin && clearPin) {
+    setStatus("Choose either a new PIN or remove the PIN", "warn");
+    return;
+  }
+  if (profile.pin_required && (newPin || clearPin) && currentPin.length < 4) {
+    setStatus("Current PIN is required to change profile PIN", "warn");
+    return;
+  }
+
+  try {
+    await saveProfileSettings(profile.profile_id, {
+      allow_channels: allowChannels,
+      block_channels: blockChannels,
+      current_pin: currentPin || null,
+      pin: newPin || null,
+      clear_pin: clearPin,
+    });
+  } catch (err) {
+    console.error(err);
+    setStatus("Profile update failed", "bad");
   }
 });
 

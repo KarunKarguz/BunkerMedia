@@ -139,6 +139,10 @@ body.modal-open {
   min-width: 180px;
 }
 
+.profile-settings-form input[type="text"] {
+  min-width: 240px;
+}
+
 .checkbox-pill {
   display: inline-flex;
   align-items: center;

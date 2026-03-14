@@ -137,8 +137,8 @@ The repo must meet a real open-source `1.0` bar.
 
 ### Privacy and Household Controls
 
-- [ ] PIN rotation/change flow exists
-- [ ] kids mode supports explicit allow/block controls
+- [x] PIN rotation/change flow exists
+- [x] kids mode supports explicit allow/block controls
 - [ ] vault state is visible and understandable from the UI
 - [ ] private/explicit media cannot leak through search, rails, recommendations, or direct stream access
 
@@ -177,8 +177,8 @@ The repo must meet a real open-source `1.0` bar.
 
 ### Track B: Privacy and Family Controls
 
-1. Add PIN rotation/change flow.
-2. Add channel allow/block controls for kids mode and vault profiles.
+1. Add PIN rotation/change flow. Completed in `0.2.9`.
+2. Add channel allow/block controls for kids mode and vault profiles. Completed in `0.2.9`.
 3. Surface clearer vault-health messaging in Bunku.
 
 ### Track C: Acquisition and Off-Grid Appliance
@@ -208,10 +208,9 @@ If BunkerMedia is going to be more than "yet another self-hosted media app", the
 
 These are the top blockers preventing a clean `1.0.0` release today:
 
-1. no PIN rotation or stronger parental allow/block controls yet
-2. no continuous NAS watcher yet
-3. no CI quality-gate stack (`ruff` / `mypy` / coverage) yet
-4. no documented upgrade-validation matrix yet
+1. no continuous NAS watcher yet
+2. no CI quality-gate stack (`ruff` / `mypy` / coverage) yet
+3. no documented upgrade-validation matrix yet
 
 ## After 1.0
 

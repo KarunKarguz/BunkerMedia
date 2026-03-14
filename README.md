@@ -29,7 +29,8 @@ Current maturity: `public beta`. The core platform is working, but the project i
 - SQLite-backed metadata, watch history, and preferences
 - Hybrid recommendation engine (semantic + behavioral + trending) with diversity rerank
 - Multi-user profiles with active-profile switching and kids-safe mode
-- Private-vault mode with encrypted-storage health checks, profile PINs, and hidden private media
+- Private-vault mode with encrypted-storage health checks, profile PINs, PIN rotation, and hidden private media
+- Per-profile channel allow/block controls for kids-safe and vault-oriented household use
 - Resumable playlist/channel/trending download batches with persisted progress and startup recovery
 - Local artwork/poster cache with remote thumbnail capture and generated fallback artwork
 - Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, library filters, queue/dead-letter controls, recommendation reasoning, inline playback, fullscreen OTT player flow, and installable app-shell behavior
@@ -139,6 +140,7 @@ Inside Bunku, TV mode is enabled by default:
 - `Esc` closes the inline player overlay
 - Profiles can be switched from the top bar, including kids-safe profiles
 - Private-vault profiles can require a PIN and hide marked media from normal profiles
+- Selected profiles can rotate/remove PINs and enforce channel allow/block lists from the top bar
 - Search supports channel, freshness, duration, and downloaded-only filters
 - Queue rows support pause/resume and priority tuning directly from the UI
 - Dead letters can be retried individually or cleared in bulk from the UI

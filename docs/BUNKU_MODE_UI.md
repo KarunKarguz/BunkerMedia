@@ -42,6 +42,8 @@ A household user should open one local URL and immediately:
 - Intent presets: `focus`, `relax`, `learn`, `entertain`
 - Autopilot toggle for selected interests
 - Private vault profile selection and optional PIN challenge
+- Active-profile PIN rotation/removal with current-PIN confirmation
+- Channel allow/block editing for kids-safe and vault-capable profiles
 
 ## Background Behavior
 

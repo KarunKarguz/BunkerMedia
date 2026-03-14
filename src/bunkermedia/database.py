@@ -1156,6 +1156,30 @@ class Database:
             )
             self.conn.commit()
 
+    def replace_preferences(
+        self,
+        pref_type: str,
+        pref_keys: list[str],
+        profile_id: str | None = None,
+        weight: float = 1.0,
+    ) -> None:
+        scoped_type = (
+            f"profile:{(profile_id or self.DEFAULT_PROFILE_ID).strip().lower()}:{pref_type}" if profile_id else pref_type
+        )
+        now = self._utc_now()
+        normalized = sorted({str(key).strip().lower() for key in pref_keys if str(key).strip()})
+        with self._lock:
+            self.conn.execute("DELETE FROM preferences WHERE pref_type=?", (scoped_type,))
+            if normalized:
+                self.conn.executemany(
+                    """
+                    INSERT INTO preferences (pref_type, pref_key, pref_value, weight, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    [(scoped_type, key, key, weight, now) for key in normalized],
+                )
+            self.conn.commit()
+
     def get_preferences(self, pref_type: str, profile_id: str | None = None) -> dict[str, float]:
         scoped_type = f"profile:{(profile_id or self.DEFAULT_PROFILE_ID).strip().lower()}:{pref_type}" if profile_id else pref_type
         with self._lock:
