@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="bunkermedia",
-    version="0.1.0",
+    version="0.2.5",
     description="Self-hosted intelligent media acquisition and streaming system",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

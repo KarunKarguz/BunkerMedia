@@ -21,7 +21,7 @@ A household user should open one local URL and immediately:
 
 2. Library
 - Downloaded-only filter
-- Source/provider filter
+- Channel filter
 - Duration and freshness filters
 
 3. Player
@@ -33,6 +33,7 @@ A household user should open one local URL and immediately:
 - Active downloads
 - Retry/backoff state
 - Dead-letter list with one-click retry
+- Dead-letter bulk clear for cleaned-up failures
 - Source sync status (online/offline)
 
 5. Profile/Intent

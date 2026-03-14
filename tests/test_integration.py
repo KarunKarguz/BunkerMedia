@@ -208,6 +208,7 @@ class IntegrationTests(unittest.TestCase):
 
             async def _exercise_api() -> None:
                 async with app.router.lifespan_context(app):
+                    service = app.state.service
                     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
                         providers = await client.get("/providers")
                         self.assertEqual(providers.status_code, 200)
@@ -224,6 +225,30 @@ class IntegrationTests(unittest.TestCase):
                         payload = discovered.json()
                         self.assertGreaterEqual(len(payload), 1)
                         self.assertTrue(str(payload[0]["video_id"]).startswith("local_"))
+
+                        filtered_search = await client.get(
+                            "/search",
+                            params={
+                                "q": "episode",
+                                "channel": "local_media",
+                                "downloaded_only": "true",
+                                "limit": 10,
+                            },
+                        )
+                        self.assertEqual(filtered_search.status_code, 200)
+                        self.assertGreaterEqual(len(filtered_search.json()), 1)
+
+                        filtered_only = await client.get(
+                            "/search",
+                            params={
+                                "q": "",
+                                "downloaded_only": "true",
+                                "duration_max": 3600,
+                                "limit": 10,
+                            },
+                        )
+                        self.assertEqual(filtered_only.status_code, 200)
+                        self.assertGreaterEqual(len(filtered_only.json()), 1)
 
                         inventory = await client.get("/offline/inventory")
                         self.assertEqual(inventory.status_code, 200)
@@ -264,6 +289,20 @@ class IntegrationTests(unittest.TestCase):
                         profiles = await client.get("/profiles")
                         self.assertEqual(profiles.status_code, 200)
                         self.assertGreaterEqual(len(profiles.json()["profiles"]), 1)
+
+                        seed_job = service.db.queue_download("https://example.invalid/dead", target_type="single")
+                        service.db.dead_letter_job(seed_job, error="seed failure")
+                        deadletters = await client.get("/deadletters", params={"limit": 10})
+                        self.assertEqual(deadletters.status_code, 200)
+                        self.assertGreaterEqual(len(deadletters.json()), 1)
+                        dead_letter_id = int(deadletters.json()[0]["id"])
+
+                        retried = await client.post(f"/deadletters/{dead_letter_id}/retry")
+                        self.assertEqual(retried.status_code, 200)
+
+                        cleared_retried = await client.delete("/deadletters", params={"retried_only": "true"})
+                        self.assertEqual(cleared_retried.status_code, 200)
+                        self.assertGreaterEqual(int(cleared_retried.json()["deleted"]), 1)
 
                         created_profile = await client.post(
                             "/profiles",

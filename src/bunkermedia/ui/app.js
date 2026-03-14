@@ -19,6 +19,12 @@ const ingestUrl = document.getElementById("ingest-url");
 const ingestType = document.getElementById("ingest-type");
 const searchForm = document.getElementById("search-form");
 const searchInput = document.getElementById("search-input");
+const filterChannel = document.getElementById("filter-channel");
+const filterFreshness = document.getElementById("filter-freshness");
+const filterDurationMin = document.getElementById("filter-duration-min");
+const filterDurationMax = document.getElementById("filter-duration-max");
+const filterDownloaded = document.getElementById("filter-downloaded");
+const filterResetBtn = document.getElementById("filter-reset-btn");
 const searchResults = document.getElementById("search-results");
 const heroStrip = document.getElementById("hero-strip");
 
@@ -55,6 +61,8 @@ const rails = {
 
 const queueList = document.getElementById("queue-list");
 const deadlettersList = document.getElementById("deadletters-list");
+const deadlettersClearRetriedBtn = document.getElementById("deadletters-clear-retried-btn");
+const deadlettersClearAllBtn = document.getElementById("deadletters-clear-all-btn");
 const cardTemplate = document.getElementById("video-card-template");
 const jobTemplate = document.getElementById("job-row-template");
 const playerModal = document.getElementById("player-modal");
@@ -151,6 +159,31 @@ function formatBytes(bytes = 0) {
     return "0 GB";
   }
   return `${(value / 1024 ** 3).toFixed(value >= 10 * 1024 ** 3 ? 0 : 1)} GB`;
+}
+
+function activeSearchFilters() {
+  const params = new URLSearchParams();
+  const channel = filterChannel.value.trim();
+  const freshness = filterFreshness.value.trim();
+  const durationMin = filterDurationMin.value.trim();
+  const durationMax = filterDurationMax.value.trim();
+
+  if (channel) {
+    params.set("channel", channel);
+  }
+  if (freshness) {
+    params.set("freshness_days", freshness);
+  }
+  if (durationMin) {
+    params.set("duration_min", String(Number(durationMin) * 60));
+  }
+  if (durationMax) {
+    params.set("duration_max", String(Number(durationMax) * 60));
+  }
+  if (filterDownloaded.checked) {
+    params.set("downloaded_only", "true");
+  }
+  return params;
 }
 
 function summarizeWhy(video) {
@@ -801,13 +834,20 @@ async function loadHome() {
 
 async function search(query) {
   const q = query.trim();
-  if (!q) {
-    emptyState(searchResults, "Enter text to search.");
+  const params = activeSearchFilters();
+  if (!q && Array.from(params.keys()).length === 0) {
+    emptyState(searchResults, "Enter text or apply filters.");
     return;
   }
-  setStatus(`Searching for ${q}`, "warn");
+  if (q) {
+    params.set("q", q);
+  } else {
+    params.set("q", "");
+  }
+  params.set("limit", "18");
+  setStatus(q ? `Searching for ${q}` : "Applying filters", "warn");
   try {
-    const rows = await fetchJson(`/search?q=${encodeURIComponent(q)}&limit=18`);
+    const rows = await fetchJson(`/search?${params.toString()}`);
     renderVideoCards(searchResults, rows || [], "search");
     setStatus("Search complete", "good");
   } catch (err) {
@@ -843,6 +883,13 @@ async function sendFeedback(videoId, payload) {
 async function retryDeadLetter(deadLetterId) {
   await fetchJson(`/deadletters/${deadLetterId}/retry`, { method: "POST" });
   setStatus(`Retried dead-letter ${deadLetterId}`, "good");
+  await loadHome();
+}
+
+async function clearDeadLetters(retriedOnly = false) {
+  const suffix = retriedOnly ? "?retried_only=true" : "";
+  const result = await fetchJson(`/deadletters${suffix}`, { method: "DELETE" });
+  setStatus(`Cleared ${result.deleted || 0} dead letters`, "good");
   await loadHome();
 }
 
@@ -1083,6 +1130,34 @@ ingestForm.addEventListener("submit", async (event) => {
 searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
   search(searchInput.value);
+});
+
+filterResetBtn.addEventListener("click", () => {
+  searchInput.value = "";
+  filterChannel.value = "";
+  filterFreshness.value = "";
+  filterDurationMin.value = "";
+  filterDurationMax.value = "";
+  filterDownloaded.checked = false;
+  emptyState(searchResults, "Filters cleared.");
+});
+
+deadlettersClearRetriedBtn.addEventListener("click", async () => {
+  try {
+    await clearDeadLetters(true);
+  } catch (err) {
+    console.error(err);
+    setStatus("Dead-letter cleanup failed", "bad");
+  }
+});
+
+deadlettersClearAllBtn.addEventListener("click", async () => {
+  try {
+    await clearDeadLetters(false);
+  } catch (err) {
+    console.error(err);
+    setStatus("Dead-letter cleanup failed", "bad");
+  }
 });
 
 playerBackdrop.addEventListener("click", closePlayer);

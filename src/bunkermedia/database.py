@@ -673,6 +673,16 @@ class Database:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def clear_dead_letter_jobs(self, retried_only: bool = False) -> int:
+        query = "DELETE FROM dead_letter_jobs"
+        params: tuple[Any, ...] = ()
+        if retried_only:
+            query += " WHERE retried_at IS NOT NULL"
+        with self._lock:
+            cursor = self.conn.execute(query, params)
+            self.conn.commit()
+            return int(cursor.rowcount or 0)
+
     def retry_dead_letter(self, dead_letter_id: int) -> int | None:
         now = self._utc_now()
         with self._lock:
@@ -732,6 +742,11 @@ class Database:
         limit: int = 100,
         search: str | None = None,
         profile_id: str = DEFAULT_PROFILE_ID,
+        channel: str | None = None,
+        downloaded_only: bool = False,
+        upload_date_after: str | None = None,
+        duration_min: int | None = None,
+        duration_max: int | None = None,
     ) -> list[dict[str, Any]]:
         normalized_profile = (profile_id or self.DEFAULT_PROFILE_ID).strip().lower() or self.DEFAULT_PROFILE_ID
         is_default_profile = 1 if normalized_profile == self.DEFAULT_PROFILE_ID else 0
@@ -762,10 +777,27 @@ class Database:
             is_default_profile,
             normalized_profile,
         ]
+        clauses: list[str] = []
         if search:
-            query += " WHERE v.title LIKE ? OR v.channel LIKE ? "
+            clauses.append("(v.title LIKE ? OR v.channel LIKE ?)")
             wildcard = f"%{search}%"
             params.extend([wildcard, wildcard])
+        if channel:
+            clauses.append("v.channel LIKE ?")
+            params.append(f"%{channel}%")
+        if downloaded_only:
+            clauses.append("v.downloaded=1")
+        if upload_date_after:
+            clauses.append("COALESCE(v.upload_date, '') >= ?")
+            params.append(upload_date_after)
+        if duration_min is not None:
+            clauses.append("COALESCE(v.duration_seconds, 0) >= ?")
+            params.append(max(0, int(duration_min)))
+        if duration_max is not None:
+            clauses.append("COALESCE(v.duration_seconds, 0) <= ?")
+            params.append(max(0, int(duration_max)))
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses) + " "
         query += " ORDER BY v.updated_at DESC LIMIT ?"
         params.append(limit)
 

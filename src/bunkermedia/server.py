@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 from bunkermedia.service import BunkerService
@@ -86,7 +86,7 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         finally:
             await service.shutdown()
 
-    app = FastAPI(title="BunkerMedia", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="BunkerMedia", version="0.2.5", lifespan=lifespan)
     app.state.service = service
 
     @app.middleware("http")
@@ -107,42 +107,42 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         page = ui_root / "index.html"
         if not page.exists():
             raise HTTPException(status_code=404, detail="Bunku UI files not found")
-        return FileResponse(str(page), media_type="text/html")
+        return HTMLResponse(page.read_text(encoding="utf-8"))
 
     @app.get("/bunku/styles.css", include_in_schema=False)
     async def bunku_styles():
         css = ui_root / "styles.css"
         if not css.exists():
             raise HTTPException(status_code=404, detail="UI stylesheet not found")
-        return FileResponse(str(css), media_type="text/css")
+        return Response(content=css.read_text(encoding="utf-8"), media_type="text/css")
 
     @app.get("/bunku/app.js", include_in_schema=False)
     async def bunku_script():
         js = ui_root / "app.js"
         if not js.exists():
             raise HTTPException(status_code=404, detail="UI script not found")
-        return FileResponse(str(js), media_type="application/javascript")
+        return Response(content=js.read_text(encoding="utf-8"), media_type="application/javascript")
 
     @app.get("/bunku/manifest.webmanifest", include_in_schema=False)
     async def bunku_manifest():
         manifest = ui_root / "manifest.webmanifest"
         if not manifest.exists():
             raise HTTPException(status_code=404, detail="UI manifest not found")
-        return FileResponse(str(manifest), media_type="application/manifest+json")
+        return Response(content=manifest.read_text(encoding="utf-8"), media_type="application/manifest+json")
 
     @app.get("/bunku/sw.js", include_in_schema=False)
     async def bunku_service_worker():
         script = ui_root / "sw.js"
         if not script.exists():
             raise HTTPException(status_code=404, detail="UI service worker not found")
-        return FileResponse(str(script), media_type="application/javascript")
+        return Response(content=script.read_text(encoding="utf-8"), media_type="application/javascript")
 
     @app.get("/bunku/icon.svg", include_in_schema=False)
     async def bunku_icon():
         icon = ui_root / "icon.svg"
         if not icon.exists():
             raise HTTPException(status_code=404, detail="UI icon not found")
-        return FileResponse(str(icon), media_type="image/svg+xml")
+        return Response(content=icon.read_text(encoding="utf-8"), media_type="image/svg+xml")
 
     @app.get("/bunku/data/home")
     async def bunku_home(limit: int = Query(16, ge=4, le=60)):
@@ -248,8 +248,24 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         return PlainTextResponse(payload, media_type="text/plain")
 
     @app.get("/videos")
-    async def list_videos(limit: int = Query(100, ge=1, le=1000), search: str | None = None):
-        return service.list_videos(limit=limit, search=search)
+    async def list_videos(
+        limit: int = Query(100, ge=1, le=1000),
+        search: str | None = None,
+        channel: str | None = None,
+        downloaded_only: bool = False,
+        freshness_days: int | None = Query(default=None, ge=1, le=3650),
+        duration_min: int | None = Query(default=None, ge=0, le=86400),
+        duration_max: int | None = Query(default=None, ge=0, le=86400),
+    ):
+        return service.list_videos(
+            limit=limit,
+            search=search,
+            channel=channel,
+            downloaded_only=downloaded_only,
+            freshness_days=freshness_days,
+            duration_min=duration_min,
+            duration_max=duration_max,
+        )
 
     @app.get("/videos/{video_id}")
     async def get_video(video_id: str):
@@ -259,8 +275,24 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         return video
 
     @app.get("/search")
-    async def search_videos(q: str, limit: int = Query(100, ge=1, le=1000)):
-        return service.list_videos(limit=limit, search=q)
+    async def search_videos(
+        q: str,
+        limit: int = Query(100, ge=1, le=1000),
+        channel: str | None = None,
+        downloaded_only: bool = False,
+        freshness_days: int | None = Query(default=None, ge=1, le=3650),
+        duration_min: int | None = Query(default=None, ge=0, le=86400),
+        duration_max: int | None = Query(default=None, ge=0, le=86400),
+    ):
+        return service.list_videos(
+            limit=limit,
+            search=q,
+            channel=channel,
+            downloaded_only=downloaded_only,
+            freshness_days=freshness_days,
+            duration_min=duration_min,
+            duration_max=duration_max,
+        )
 
     @app.post("/queue")
     async def queue_video(payload: QueuePayload):
@@ -376,6 +408,11 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     @app.get("/deadletters")
     async def list_deadletters(limit: int = Query(100, ge=1, le=1000)):
         return service.list_dead_letter_jobs(limit=limit)
+
+    @app.delete("/deadletters")
+    async def clear_deadletters(retried_only: bool = False):
+        cleared = service.clear_dead_letter_jobs(retried_only=retried_only)
+        return {"status": "cleared", "deleted": cleared, "retried_only": retried_only}
 
     @app.post("/deadletters/{dead_letter_id}/retry")
     async def retry_deadletter(dead_letter_id: int):

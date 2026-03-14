@@ -418,6 +418,10 @@ body.modal-open {
   gap: 12px;
 }
 
+.queue-toolbar {
+  margin-bottom: 14px;
+}
+
 input,
 select {
   width: 100%;

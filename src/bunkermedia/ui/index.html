@@ -133,7 +133,20 @@
           <form id="search-form" class="stack-form">
             <input id="search-input" type="text" placeholder="Search title or channel" />
             <div class="stack-row">
+              <input id="filter-channel" type="text" placeholder="Channel filter" />
+              <input id="filter-freshness" type="number" min="1" max="3650" placeholder="Freshness days" />
+            </div>
+            <div class="stack-row">
+              <input id="filter-duration-min" type="number" min="0" max="1440" placeholder="Min minutes" />
+              <input id="filter-duration-max" type="number" min="0" max="1440" placeholder="Max minutes" />
+            </div>
+            <div class="stack-row">
+              <label class="checkbox-pill">
+                <input id="filter-downloaded" type="checkbox" />
+                <span>Downloaded Only</span>
+              </label>
               <button class="btn btn-gold" type="submit">Search</button>
+              <button id="filter-reset-btn" class="btn btn-ghost" type="button">Reset</button>
             </div>
           </form>
           <div id="search-results" class="card-row compact-row"></div>
@@ -242,6 +255,10 @@
           <div class="section-head">
             <h2>Dead Letters</h2>
             <span class="hint">Failures that need retry or review</span>
+          </div>
+          <div class="stack-row queue-toolbar">
+            <button id="deadletters-clear-retried-btn" class="btn btn-ghost" type="button">Clear Retried</button>
+            <button id="deadletters-clear-all-btn" class="btn btn-bad" type="button">Clear All</button>
           </div>
           <div id="deadletters-list" class="list"></div>
         </article>

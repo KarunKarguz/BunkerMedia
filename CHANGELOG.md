@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.5] - 2026-03-14
+
+### Added
+
+- Bunku library filters for channel, freshness, duration, and downloaded-only search refinement.
+- Dead-letter bulk cleanup endpoint and UI controls for clearing retried or all failed queue items.
+
+### Changed
+
+- API video listing and search routes now accept the same filter set used by the Bunku UI.
+- Roadmap and UI specification now treat Bunku filters and failed-queue cleanup as completed Phase C work.
+
 ## [0.2.4] - 2026-03-13
 
 ### Added

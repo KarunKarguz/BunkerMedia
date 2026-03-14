@@ -27,7 +27,7 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Hybrid recommendation engine (semantic + behavioral + trending) with diversity rerank
 - Multi-user profiles with active-profile switching and kids-safe mode
 - Private-vault mode with encrypted-storage health checks, profile PINs, and hidden private media
-- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, queue panel, recommendation reasoning, feedback controls, inline playback, and installable app-shell behavior
+- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, library filters, queue/dead-letter controls, recommendation reasoning, inline playback, and installable app-shell behavior
 - FastAPI media server
 - Async background workers for sync and queued downloads
 - Offline horizon planner for auto-queuing watch-ready content
@@ -38,7 +38,6 @@ BunkerMedia is a self-hosted intelligent media acquisition and streaming system 
 - Schema migration/version tracking (`schema_migrations`)
 - Provider plugin framework with built-in `youtube` provider
 - Additional built-in providers: `rss` and `local`
-- CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker serve`, `bunker status`, `bunker backup`, `bunker restore`, `bunker providers`, `bunker discover`, `bunker schema`
 - CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker serve`, `bunker status`, `bunker imports-organize`, `bunker backup`, `bunker restore`, `bunker providers`, `bunker discover`, `bunker schema`
 
 ## Install
@@ -133,7 +132,9 @@ Inside Bunku, TV mode is enabled by default:
 - `Esc` closes the inline player overlay
 - Profiles can be switched from the top bar, including kids-safe profiles
 - Private-vault profiles can require a PIN and hide marked media from normal profiles
+- Search supports channel, freshness, duration, and downloaded-only filters
 - Queue rows support pause/resume and priority tuning directly from the UI
+- Dead letters can be retried individually or cleared in bulk from the UI
 - On supported browsers, `Install App` pins Bunku to a phone/tablet/TV home screen
 
 ## API Endpoints
@@ -163,12 +164,15 @@ Inside Bunku, TV mode is enabled by default:
 - `POST /backup`
 - `POST /restore`
 - `GET /videos?limit=100&search=keyword`
+- `GET /videos?limit=100&search=keyword&channel=name&downloaded_only=true&freshness_days=30&duration_min=300&duration_max=5400`
 - `GET /videos/{video_id}`
+- `GET /search?q=keyword&channel=name&downloaded_only=true&freshness_days=30&duration_min=300&duration_max=5400`
 - `GET /jobs?status=pending&limit=100`
 - `POST /jobs/{job_id}/pause`
 - `POST /jobs/{job_id}/resume`
 - `POST /jobs/{job_id}/priority`
 - `GET /deadletters?limit=100`
+- `DELETE /deadletters?retried_only=true`
 - `POST /deadletters/{dead_letter_id}/retry`
 - `GET /recommendations?limit=20&explain=true`
 - `GET /stream/{video_id}`

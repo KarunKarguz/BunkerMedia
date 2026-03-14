@@ -41,7 +41,7 @@ No built-in piracy-focused workflows will be added.
 ### Key Gaps to "Complete Home Media Server"
 
 - Multi-provider ingestion plugin architecture.
-- Deeper Bunku controls (filters, recommendation reasoning, queue prioritization).
+- Deeper Bunku controls (bulk queue hygiene, richer feedback actions, library polish).
 - Multi-user profile and parental mode support beyond the current private-vault baseline.
 - More robust recommendation feedback loops and autopilot policies.
 - Full observability, backups, and upgrade tooling.
@@ -98,7 +98,7 @@ Deliver a local "Bunker Mode Netflix" interface for family-friendly usage.
 - [x] Web UI shell with TV-friendly browsing.
 - [x] Home screen rails: Continue Watching, Downloaded, Recommended, New.
 - [x] Search from the UI.
-- [ ] Filters (duration, channel, freshness, downloaded-only).
+- [x] Filters (duration, channel, freshness, downloaded-only).
 - [x] Inline playback modal with keyboard/D-pad friendly controls.
 - [x] Recommendation cards with "Why this" explanation.
 - [ ] Feedback controls: Like, Dislike, Not Interested, Hide Channel.
@@ -107,7 +107,7 @@ Deliver a local "Bunker Mode Netflix" interface for family-friendly usage.
 - [x] Profile switcher with kids mode.
 - [x] Installable mobile/TV app shell (manifest + service worker).
 - [x] Private-vault controls with profile PIN support and encrypted-storage health.
-- [ ] Queue controls: Clear Failed.
+- [x] Queue controls: Clear Failed.
 
 ### Exit Criteria
 
@@ -180,6 +180,6 @@ Production-grade open-source release for broad self-hosting.
 ## Next 4-Week Execution Plan
 
 1. Add resumable background download batches and partial-recovery logic.
-2. Add Bunku Mode filters and dead-letter cleanup actions.
-3. Harden private-vault workflows with profile PIN rotation and explicit allow/block controls.
+2. Harden private-vault workflows with profile PIN rotation and explicit allow/block controls.
+3. Add richer feedback actions (`not interested`, `hide channel`) and intent presets.
 4. Add community provider adapter registry and validation policy.

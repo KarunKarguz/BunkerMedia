@@ -196,6 +196,9 @@ class BunkerService:
     def list_dead_letter_jobs(self, limit: int = 100):
         return self.db.list_dead_letter_jobs(limit=limit)
 
+    def clear_dead_letter_jobs(self, retried_only: bool = False) -> int:
+        return self.db.clear_dead_letter_jobs(retried_only=retried_only)
+
     def retry_dead_letter(self, dead_letter_id: int) -> int | None:
         return self.db.retry_dead_letter(dead_letter_id)
 
@@ -208,9 +211,33 @@ class BunkerService:
     def set_download_job_priority(self, job_id: int, priority: int) -> bool:
         return self.db.set_job_priority(job_id, priority)
 
-    def list_videos(self, limit: int = 100, search: str | None = None):
+    def list_videos(
+        self,
+        limit: int = 100,
+        search: str | None = None,
+        channel: str | None = None,
+        downloaded_only: bool = False,
+        freshness_days: int | None = None,
+        duration_min: int | None = None,
+        duration_max: int | None = None,
+    ):
         active = self.get_active_profile()
-        rows = self.db.list_videos(limit=max(limit * 4, limit), search=search, profile_id=str(active["profile_id"]))
+        upload_date_after = None
+        if freshness_days is not None and int(freshness_days) > 0:
+            from datetime import datetime, timedelta
+
+            threshold = datetime.utcnow() - timedelta(days=int(freshness_days))
+            upload_date_after = threshold.strftime("%Y%m%d")
+        rows = self.db.list_videos(
+            limit=max(limit * 4, limit),
+            search=search,
+            profile_id=str(active["profile_id"]),
+            channel=channel,
+            downloaded_only=downloaded_only,
+            upload_date_after=upload_date_after,
+            duration_min=duration_min,
+            duration_max=duration_max,
+        )
         filtered = [row for row in rows if self._video_allowed_for_profile(row, active)]
         return filtered[:limit]
 
