@@ -111,7 +111,7 @@
         <article class="feature-stage panel" id="featured-panel">
           <div class="feature-backdrop"></div>
           <div class="feature-content">
-            <div class="eyebrow">Tonight's top pick</div>
+            <div class="eyebrow" id="featured-eyebrow">Tonight's top pick</div>
             <h2 id="featured-title">Loading recommendations...</h2>
             <p id="featured-meta" class="feature-meta"></p>
             <p id="featured-note" class="feature-note"></p>
@@ -176,6 +176,10 @@
               <button id="filter-reset-btn" class="btn btn-ghost" type="button">Reset</button>
             </div>
           </form>
+          <div class="search-meta">
+            <p id="search-results-meta" class="search-results-meta">Enter text or apply filters.</p>
+            <div id="search-filter-chips" class="filter-chip-row"></div>
+          </div>
           <div id="search-results" class="card-row compact-row"></div>
         </article>
       </section>
@@ -233,6 +237,7 @@
             <span class="appliance-label">Privacy Vault</span>
             <strong class="appliance-value" id="privacy-state">--</strong>
             <span class="appliance-note" id="privacy-note">Waiting for private storage state</span>
+            <span class="appliance-detail" id="privacy-detail">Waiting for vault summary</span>
           </article>
         </div>
       </section>

@@ -35,6 +35,7 @@ const filterResetBtn = document.getElementById("filter-reset-btn");
 const searchResults = document.getElementById("search-results");
 const heroStrip = document.getElementById("hero-strip");
 
+const featuredEyebrow = document.getElementById("featured-eyebrow");
 const featuredTitle = document.getElementById("featured-title");
 const featuredMeta = document.getElementById("featured-meta");
 const featuredNote = document.getElementById("featured-note");
@@ -59,6 +60,9 @@ const sysLoad = document.getElementById("sys-load");
 const sysLoadNote = document.getElementById("sys-load-note");
 const privacyState = document.getElementById("privacy-state");
 const privacyNote = document.getElementById("privacy-note");
+const privacyDetail = document.getElementById("privacy-detail");
+const searchResultsMeta = document.getElementById("search-results-meta");
+const searchFilterChips = document.getElementById("search-filter-chips");
 
 const rails = {
   continue: document.getElementById("rail-continue"),
@@ -101,6 +105,7 @@ let tvModeEnabled = localStorage.getItem(TV_MODE_KEY) !== "off";
 let currentProfileId = null;
 let deferredInstallPrompt = null;
 let profileDirectory = [];
+let searchDebounceHandle = null;
 
 function setStatus(text, tone = "neutral") {
   statusPill.textContent = text;
@@ -214,6 +219,37 @@ function formatBytes(bytes = 0) {
   return `${(value / 1024 ** 3).toFixed(value >= 10 * 1024 ** 3 ? 0 : 1)} GB`;
 }
 
+function formatDurationCompact(seconds = 0) {
+  const value = Math.max(0, Number(seconds || 0));
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${Math.max(minutes, 1)}m`;
+}
+
+function progressPercent(video) {
+  const total = Number(video && video.duration_seconds ? video.duration_seconds : 0);
+  const watched = Number(video && video.total_watch_seconds ? video.total_watch_seconds : 0);
+  if (total <= 0 || watched <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round((watched / total) * 100)));
+}
+
+function continueLabel(video) {
+  const watched = Number(video && video.total_watch_seconds ? video.total_watch_seconds : 0);
+  const total = Number(video && video.duration_seconds ? video.duration_seconds : 0);
+  if (watched <= 0) {
+    return "Resume ready.";
+  }
+  if (total > 0) {
+    return `Resume at ${formatDurationCompact(watched)} of ${formatDurationCompact(total)} (${progressPercent(video)}%).`;
+  }
+  return `Resume from ${formatDurationCompact(watched)}.`;
+}
+
 function activeSearchFilters() {
   const params = new URLSearchParams();
   const channel = filterChannel.value.trim();
@@ -239,6 +275,65 @@ function activeSearchFilters() {
   return params;
 }
 
+function activeSearchChips() {
+  const chips = [];
+  const query = searchInput.value.trim();
+  const channel = filterChannel.value.trim();
+  const freshness = filterFreshness.value.trim();
+  const durationMin = filterDurationMin.value.trim();
+  const durationMax = filterDurationMax.value.trim();
+
+  if (query) {
+    chips.push(`Query: ${query}`);
+  }
+  if (channel) {
+    chips.push(`Channel: ${channel}`);
+  }
+  if (freshness) {
+    chips.push(`Fresh: ${freshness}d`);
+  }
+  if (durationMin) {
+    chips.push(`Min: ${durationMin}m`);
+  }
+  if (durationMax) {
+    chips.push(`Max: ${durationMax}m`);
+  }
+  if (filterDownloaded.checked) {
+    chips.push("Downloaded");
+  }
+  return chips;
+}
+
+function searchHasContext() {
+  return Boolean(searchInput.value.trim()) || activeSearchChips().length > 0;
+}
+
+function renderSearchMeta(count = null, query = "") {
+  const chips = activeSearchChips();
+  searchFilterChips.innerHTML = "";
+  chips.forEach((chipText) => {
+    const chip = document.createElement("span");
+    chip.className = "filter-chip";
+    chip.textContent = chipText;
+    searchFilterChips.appendChild(chip);
+  });
+
+  if (!searchHasContext()) {
+    searchResultsMeta.textContent = "Enter text or apply filters.";
+    return;
+  }
+
+  if (count == null) {
+    searchResultsMeta.textContent = query ? `Searching for "${query}"...` : "Applying filters...";
+    return;
+  }
+
+  const resultLabel = count === 1 ? "result" : "results";
+  searchResultsMeta.textContent = query
+    ? `${count} ${resultLabel} for "${query}".`
+    : `${count} ${resultLabel} from active filters.`;
+}
+
 function summarizeWhy(video) {
   if (!video || !video.explanation || !video.explanation.components) {
     return "";
@@ -261,6 +356,16 @@ function summarizeWhy(video) {
     strong.push(`trend score ${Number(parts.trending || 0).toFixed(2)}`);
   }
   return `Why this: ${strong.join(" | ")}`;
+}
+
+function recommendationActionsEnabled(source) {
+  return source === "recommended" || source === "search" || source === "fresh" || source === "featured";
+}
+
+function activeBlockedChannels() {
+  const profile = selectedProfile();
+  const blocked = profile && Array.isArray(profile.blocked_channels) ? profile.blocked_channels : [];
+  return new Set(blocked.map((channel) => String(channel || "").trim().toLowerCase()).filter(Boolean));
 }
 
 function canManagePrivateVault() {
@@ -752,7 +857,10 @@ function renderVideoCards(container, videos = [], source = "default") {
     title.textContent = registeredVideo.title || "Untitled";
     meta.textContent = `${registeredVideo.channel || "Unknown"}  |  ${registeredVideo.upload_date || "Undated"}`;
 
-    if (source === "recommended" && registeredVideo.explanation && registeredVideo.explanation.components) {
+    if (source === "continue") {
+      note.textContent = continueLabel(registeredVideo);
+      why.hidden = true;
+    } else if (source === "recommended" && registeredVideo.explanation && registeredVideo.explanation.components) {
       note.textContent = summarizeWhy(registeredVideo);
       why.textContent = [
         `Final score ${(registeredVideo.score || 0).toFixed(2)}`,
@@ -825,6 +933,26 @@ function renderVideoCards(container, videos = [], source = "default") {
       actions.appendChild(
         actionButton("Queue", "btn-ghost", async () => {
           await queueUrl(registeredVideo.source_url, "auto", 1);
+        })
+      );
+    }
+
+    if (recommendationActionsEnabled(source) && registeredVideo.video_id) {
+      actions.appendChild(
+        actionButton("Not Interested", "btn-ghost", async () => {
+          await rejectVideo(registeredVideo.video_id, "not_interested");
+        })
+      );
+    }
+
+    if (
+      recommendationActionsEnabled(source) &&
+      registeredVideo.channel &&
+      !activeBlockedChannels().has(String(registeredVideo.channel).trim().toLowerCase())
+    ) {
+      actions.appendChild(
+        actionButton("Hide Channel", "btn-ghost", async () => {
+          await blockChannelForCurrentProfile(registeredVideo.channel);
         })
       );
     }
@@ -961,6 +1089,7 @@ function renderHeroStrip(data) {
 
 function renderFeatured(data) {
   const featured =
+    (data.continue_watching && data.continue_watching[0]) ||
     (data.recommended && data.recommended[0]) ||
     (data.downloaded && data.downloaded[0]) ||
     (data.fresh && data.fresh[0]) ||
@@ -968,6 +1097,7 @@ function renderFeatured(data) {
 
   featuredActions.innerHTML = "";
   if (!featured) {
+    featuredEyebrow.textContent = "Tonight's top pick";
     featuredTitle.textContent = "No featured title yet";
     featuredMeta.textContent = "Sync the bunker or queue a source to build your front page.";
     featuredNote.textContent = "Recommendations and downloaded titles will be highlighted here.";
@@ -977,6 +1107,8 @@ function renderFeatured(data) {
     return;
   }
 
+  const isContinue = Array.isArray(data.continue_watching) && data.continue_watching[0] && data.continue_watching[0].video_id === featured.video_id;
+  featuredEyebrow.textContent = isContinue ? "Resume for this profile" : "Tonight's top pick";
   featuredTitle.textContent = featured.title || "Untitled";
   featuredMeta.textContent = `${featured.channel || "Unknown"}  |  ${featured.upload_date || "Undated"}  |  ${featured.downloaded ? "Local copy ready" : "Queue available"}`;
   if (featuredBackdrop) {
@@ -990,7 +1122,9 @@ function renderFeatured(data) {
       : FEATURE_BACKDROP_FALLBACK;
   }
 
-  if (featured.explanation && featured.explanation.components) {
+  if (isContinue) {
+    featuredNote.textContent = continueLabel(featured);
+  } else if (featured.explanation && featured.explanation.components) {
     const parts = featured.explanation.components;
     featuredNote.textContent =
       `Picked because semantic match is ${parts.semantic_similarity}, watch-history score is ${parts.watch_history}, and recency is ${parts.recency}.`;
@@ -1002,7 +1136,7 @@ function renderFeatured(data) {
 
   if (featured.downloaded || featured.local_path) {
     featuredActions.appendChild(
-      actionButton("Play Now", "btn-primary", () => {
+      actionButton(isContinue ? "Resume Now" : "Play Now", "btn-primary", () => {
         registerVideo(featured, "featured");
         openPlayer(featured.video_id);
       })
@@ -1022,6 +1156,20 @@ function renderFeatured(data) {
       await sendFeedback(featured.video_id, { liked: true, disliked: false, completed: false });
     })
   );
+
+  featuredActions.appendChild(
+    actionButton("Not Interested", "btn-ghost", async () => {
+      await rejectVideo(featured.video_id, "not_interested");
+    })
+  );
+
+  if (featured.channel && !activeBlockedChannels().has(String(featured.channel).trim().toLowerCase())) {
+    featuredActions.appendChild(
+      actionButton("Hide Channel", "btn-ghost", async () => {
+        await blockChannelForCurrentProfile(featured.channel);
+      })
+    );
+  }
 }
 
 function renderStats(data) {
@@ -1088,11 +1236,12 @@ function renderSystem(data) {
 function renderPrivacy(data) {
   const privacy = data.privacy || {};
   const profile = privacy.active_profile || {};
-  const notes = privacy.notes || [];
+  const notes = Array.isArray(privacy.notes) ? privacy.notes : [];
 
   if (!privacy.private_mode_enabled) {
     privacyState.textContent = "Off";
     privacyNote.textContent = "Private vault mode disabled";
+    privacyDetail.textContent = "All content follows normal local profile visibility rules.";
     return;
   }
 
@@ -1114,7 +1263,8 @@ function renderPrivacy(data) {
   if (profile.can_access_private) {
     statusBits.push("vault profile");
   }
-  privacyNote.textContent = statusBits.length ? statusBits.join(" | ") : notes.join(" | ") || "No privacy hints";
+  privacyNote.textContent = privacy.vault_summary || statusBits.join(" | ") || "No privacy hints";
+  privacyDetail.textContent = statusBits.length ? statusBits.join(" | ") : notes.join(" | ") || "No privacy hints";
 }
 
 async function loadHome() {
@@ -1155,10 +1305,11 @@ async function loadHome() {
   }
 }
 
-async function search(query) {
+async function search(query, options = {}) {
   const q = query.trim();
   const params = activeSearchFilters();
   if (!q && Array.from(params.keys()).length === 0) {
+    renderSearchMeta(null, "");
     emptyState(searchResults, "Enter text or apply filters.");
     return;
   }
@@ -1168,15 +1319,31 @@ async function search(query) {
     params.set("q", "");
   }
   params.set("limit", "18");
-  setStatus(q ? `Searching for ${q}` : "Applying filters", "warn");
+  renderSearchMeta(null, q);
+  if (!options.silent) {
+    setStatus(q ? `Searching for ${q}` : "Applying filters", "warn");
+  }
   try {
     const rows = await fetchJson(`/search?${params.toString()}`);
     renderVideoCards(searchResults, rows || [], "search");
-    setStatus("Search complete", "good");
+    renderSearchMeta(Array.isArray(rows) ? rows.length : 0, q);
+    if (!options.silent) {
+      setStatus("Search complete", "good");
+    }
   } catch (err) {
     console.error(err);
+    renderSearchMeta(0, q);
     setStatus("Search failed", "bad");
   }
+}
+
+function scheduleSearch() {
+  if (searchDebounceHandle) {
+    window.clearTimeout(searchDebounceHandle);
+  }
+  searchDebounceHandle = window.setTimeout(() => {
+    search(searchInput.value, { silent: true });
+  }, 220);
 }
 
 async function queueUrl(url, type = "auto", priority = 0) {
@@ -1201,6 +1368,21 @@ async function sendFeedback(videoId, payload) {
   });
   setStatus("Preference recorded", "good");
   await loadHome();
+  if (searchHasContext()) {
+    await search(searchInput.value, { silent: true });
+  }
+}
+
+async function rejectVideo(videoId, reason = "not_interested") {
+  await fetchJson(`/videos/${encodeURIComponent(videoId)}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+  setStatus("Recommendation hidden", "good");
+  await loadHome();
+  if (searchHasContext()) {
+    await search(searchInput.value, { silent: true });
+  }
 }
 
 async function retryDeadLetter(deadLetterId) {
@@ -1251,6 +1433,25 @@ async function setVideoPrivacy(videoId, privacyLevel) {
   });
   setStatus(`Privacy set to ${privacyLevel}`, "good");
   await loadHome();
+  if (searchHasContext()) {
+    await search(searchInput.value, { silent: true });
+  }
+}
+
+async function blockChannelForCurrentProfile(channel) {
+  const profile = selectedProfile();
+  if (!profile || !profile.profile_id) {
+    throw new Error("No active profile selected");
+  }
+  await fetchJson(`/profiles/${encodeURIComponent(profile.profile_id)}/channels/block`, {
+    method: "POST",
+    body: JSON.stringify({ channel }),
+  });
+  setStatus(`Hidden channel ${channel}`, "good");
+  await loadHome();
+  if (searchHasContext()) {
+    await search(searchInput.value, { silent: true });
+  }
 }
 
 async function pauseJob(jobId) {
@@ -1515,6 +1716,16 @@ searchForm.addEventListener("submit", (event) => {
   search(searchInput.value);
 });
 
+[searchInput, filterChannel, filterFreshness, filterDurationMin, filterDurationMax].forEach((element) => {
+  element.addEventListener("input", () => {
+    scheduleSearch();
+  });
+});
+
+filterDownloaded.addEventListener("change", () => {
+  scheduleSearch();
+});
+
 filterResetBtn.addEventListener("click", () => {
   searchInput.value = "";
   filterChannel.value = "";
@@ -1522,6 +1733,7 @@ filterResetBtn.addEventListener("click", () => {
   filterDurationMin.value = "";
   filterDurationMax.value = "";
   filterDownloaded.checked = false;
+  renderSearchMeta(null, "");
   emptyState(searchResults, "Filters cleared.");
 });
 

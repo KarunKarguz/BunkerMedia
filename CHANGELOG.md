@@ -2,10 +2,24 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-28
+
+### Added
+
+- Recommendation actions in Bunku and API: `Not Interested`, profile-scoped reject tracking, and `Hide Channel`.
+- Search result summary and active filter chips in Bunku.
+- Continue-watching spotlight behavior in the featured stage with resume progress messaging.
+- Dedicated multi-arch container publishing workflow for `linux/amd64`, `linux/arm64`, and `linux/arm/v7`.
+- Clean-install verification scripts and workflow for Linux and Raspberry Pi preset deployments.
+- Deterministic soak validation harness and scheduled soak workflow.
+- Soak-validation and fresh-install verification documentation.
+
 ### Changed
 
-- Reassessed the product roadmap around a real `1.0` bar for a privacy-first local OTT appliance.
-- Added a dedicated product strategy document to clarify positioning, user types, principles, and release scope.
+- Privacy state in Bunku now explains vault readiness instead of exposing only terse marker flags.
+- Rejection state is now profile-scoped correctly and no longer leaks into the default/global profile.
+- Docker image runtime now runs as a non-root user, includes a healthcheck, and excludes local state from build context.
+- Roadmap status now marks UI completion, soak documentation, multi-arch publishing, and clean-install verification as complete.
 
 ## [0.2.10] - 2026-03-14
 

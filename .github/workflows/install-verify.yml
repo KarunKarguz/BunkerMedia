@@ -1,0 +1,35 @@
+name: Install Verify
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux-fresh-install:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify Linux install
+        run: bash scripts/verify_fresh_install.sh
+
+  raspberry-pi-preset:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify Raspberry Pi preset install
+        run: bash deploy/raspberrypi/verify_pi_install.sh

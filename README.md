@@ -1,6 +1,6 @@
 # BunkerMedia
 
-BunkerMedia is a self-hosted intelligent media acquisition and streaming system designed for Linux, WSL, and Raspberry Pi.
+BunkerMedia is a self-hosted local media cloud: a privacy-first acquisition, catalog, and streaming system designed for Linux, WSL, and Raspberry Pi.
 
 Current maturity: `public beta`. The core platform is working, but the project is not claiming `1.0.0` yet. The current `1.0` bar is defined in `ROADMAP.md` and `docs/PRODUCT_STRATEGY.md`.
 
@@ -16,6 +16,8 @@ Current maturity: `public beta`. The core platform is working, but the project i
 - Governance and support policy: `docs/GOVERNANCE.md`
 - Bunku Mode UI spec: `docs/BUNKU_MODE_UI.md`
 - Operations guide: `docs/OPERATIONS.md`
+- Soak validation notes: `docs/SOAK_VALIDATION.md`
+- Fresh-install verification notes: `docs/FRESH_INSTALL_VERIFICATION.md`
 - Upgrade validation matrix: `docs/UPGRADE_VALIDATION_MATRIX.md`
 - Release cadence policy: `docs/RELEASE_POLICY.md`
 - Security hardening checklist: `docs/SECURITY_HARDENING_CHECKLIST.md`
@@ -34,7 +36,7 @@ Current maturity: `public beta`. The core platform is working, but the project i
 - Per-profile channel allow/block controls for kids-safe and vault-oriented household use
 - Resumable playlist/channel/trending download batches with persisted progress and startup recovery
 - Local artwork/poster cache with remote thumbnail capture and generated fallback artwork
-- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, library filters, queue/dead-letter controls, recommendation reasoning, inline playback, fullscreen OTT player flow, and installable app-shell behavior
+- Bunku Mode local-first web UI (`/bunku`) with TV-friendly rails, continue-watching spotlight, search chips, queue/dead-letter controls, recommendation reasoning, `Not Interested` / `Hide Channel` actions, inline playback, fullscreen OTT player flow, and installable app-shell behavior
 - FastAPI media server
 - Async background workers for sync and queued downloads
 - Offline horizon planner for auto-queuing watch-ready content
@@ -46,6 +48,9 @@ Current maturity: `public beta`. The core platform is working, but the project i
 - Schema migration/version tracking (`schema_migrations`)
 - Provider plugin framework with built-in `youtube` provider
 - Additional built-in providers: `rss` and `local`
+- Multi-arch container publishing workflow for `linux/amd64`, `linux/arm64`, and `linux/arm/v7`
+- Clean-install verification scripts/workflow for Linux and Raspberry Pi preset deployments
+- Deterministic soak validation harness plus scheduled CI soak workflow
 - CLI commands: `bunker add`, `bunker sync`, `bunker recommend`, `bunker jobs`, `bunker batches`, `bunker serve`, `bunker status`, `bunker imports-organize`, `bunker backup`, `bunker restore`, `bunker providers`, `bunker discover`, `bunker schema`
 
 ## Install
@@ -144,11 +149,13 @@ Inside Bunku, TV mode is enabled by default:
 - Profiles can be switched from the top bar, including kids-safe profiles
 - Private-vault profiles can require a PIN and hide marked media from normal profiles
 - Selected profiles can rotate/remove PINs and enforce channel allow/block lists from the top bar
-- Search supports channel, freshness, duration, and downloaded-only filters
+- Search supports channel, freshness, duration, and downloaded-only filters with active-filter chips
 - Queue rows support pause/resume and priority tuning directly from the UI
 - Dead letters can be retried individually or cleared in bulk from the UI
 - Playlist/channel/trending queue runs retain batch progress and resume after restart or retry
 - Cards and featured rails use local artwork URLs backed by cached thumbnails or generated posters
+- Recommendation cards support `Not Interested` and `Hide Channel` actions without leaving the rail
+- Continue-watching titles are promoted into the featured stage with resume progress messaging
 - Focus returns to the last rail/item after refresh or playback close instead of jumping back to the top
 - On supported browsers, `Install App` pins Bunku to a phone/tablet/TV home screen
 
@@ -168,6 +175,7 @@ Inside Bunku, TV mode is enabled by default:
 - `POST /profiles`
 - `PATCH /profiles/{profile_id}`
 - `POST /profiles/{profile_id}/select`
+- `POST /profiles/{profile_id}/channels/block`
 - `POST /imports/organize`
 - `GET /offline/inventory`
 - `POST /offline/plan`
@@ -196,6 +204,7 @@ Inside Bunku, TV mode is enabled by default:
 - `GET /stream/{video_id}`
 - `POST /videos/{video_id}/watched`
 - `POST /videos/{video_id}/privacy`
+- `POST /videos/{video_id}/reject`
 
 ## Notes for Raspberry Pi
 
@@ -225,4 +234,9 @@ Inside Bunku, TV mode is enabled by default:
 ## Deployment
 
 - Docker: `docker compose up --build`
+- Multi-arch image publishing workflow: `.github/workflows/container.yml`
+- Clean-install verification workflow: `.github/workflows/install-verify.yml`
+- Soak validation workflow: `.github/workflows/soak.yml`
+- Linux verification script: `scripts/verify_fresh_install.sh`
+- Raspberry Pi verification script: `deploy/raspberrypi/verify_pi_install.sh`
 - systemd unit template: `deploy/systemd/bunkermedia.service`

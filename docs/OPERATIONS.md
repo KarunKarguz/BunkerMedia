@@ -180,6 +180,17 @@ Important:
 docker compose up --build -d
 ```
 
+### Multi-Arch Container Publishing
+
+- Workflow: `.github/workflows/container.yml`
+- Published image target: `ghcr.io/<repository-owner>/bunkermedia`
+- Architectures:
+  - `linux/amd64`
+  - `linux/arm64`
+  - `linux/arm/v7`
+
+The workflow builds on pull requests and publishes on `main` or release tags.
+
 ### Raspberry Pi Appliance Profile
 
 Bootstrap:
@@ -202,6 +213,58 @@ This profile:
 - pre-creates NAS import folders,
 - enables a container healthcheck,
 - and tunes offline/storage defaults for small ARM systems.
+
+## Fresh-Install Verification
+
+The repo now carries clean-install verification scripts and a dedicated workflow.
+
+Linux verification:
+
+```bash
+bash scripts/verify_fresh_install.sh
+```
+
+Raspberry Pi preset verification:
+
+```bash
+bash deploy/raspberrypi/verify_pi_install.sh
+```
+
+Workflow:
+
+- `.github/workflows/install-verify.yml`
+
+These checks validate:
+
+- package install from a clean target directory,
+- first-run schema bootstrap,
+- CLI command surface (`status`, `schema`, `providers`),
+- HTTP startup and basic `/health` + `/bunku` reachability,
+- Raspberry Pi preset bootstrap via `deploy/raspberrypi/setup_pi.sh`.
+
+The Pi verification uses the Pi preset in a clean Linux environment. It validates the preset and startup path, but it is not a substitute for real hardware thermal/peripheral testing.
+
+## Soak Validation
+
+Deterministic soak harness:
+
+```bash
+python scripts/run_soak_validation.py --cycles 45 --seed-jobs 12 --batch-jobs 4 --restarts 1
+```
+
+Nightly/manual workflow:
+
+- `.github/workflows/soak.yml`
+
+The soak harness exercises:
+
+- queue processing,
+- playlist/channel batch completion,
+- restart recovery,
+- import watcher churn,
+- recommendation refresh cycles,
+- offline inventory growth,
+- dead-letter cleanliness at the end of the run.
 
 ### systemd
 

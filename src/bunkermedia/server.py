@@ -77,6 +77,14 @@ class VideoPrivacyPayload(BaseModel):
     privacy_level: str = Field(default="standard", pattern="^(standard|private|explicit)$")
 
 
+class VideoRejectPayload(BaseModel):
+    reason: str = Field(default="not_interested", pattern="^[a-z_]{3,32}$")
+
+
+class ChannelRulePayload(BaseModel):
+    channel: str = Field(min_length=1, max_length=160)
+
+
 def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
     service = BunkerService(config_path=config_path)
     ui_root = Path(__file__).resolve().parent / "ui"
@@ -157,11 +165,20 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
         videos = service.list_videos(limit=max(200, limit * 8), search=None)
         video_by_id = {str(item["video_id"]): item for item in videos if item.get("video_id")}
 
-        continue_watching = [
+        continue_candidates = [
             _serialize_video(item)
             for item in videos
-            if int(item.get("watched") or 0) == 1 and int(item.get("downloaded") or 0) == 1
-        ][:limit]
+            if int(item.get("downloaded") or 0) == 1
+            and int(item.get("completed") or 0) == 0
+            and int(item.get("total_watch_seconds") or 0) > 0
+        ]
+        continue_watching = continue_candidates[:limit]
+        if not continue_watching:
+            continue_watching = [
+                _serialize_video(item)
+                for item in videos
+                if int(item.get("watched") or 0) == 1 and int(item.get("downloaded") or 0) == 1
+            ][:limit]
 
         downloaded = [_serialize_video(item) for item in videos if int(item.get("downloaded") or 0) == 1][:limit]
         fresh = [_serialize_video(item) for item in videos][:limit]
@@ -373,6 +390,13 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             raise HTTPException(status_code=403, detail="Profile not found or PIN invalid")
         return {"status": "updated", "profile": profile}
 
+    @app.post("/profiles/{profile_id}/channels/block")
+    async def block_profile_channel(profile_id: str, payload: ChannelRulePayload):
+        profile = service.block_channel(payload.channel, profile_id=profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found or channel invalid")
+        return {"status": "updated", "profile": profile, "channel": payload.channel.strip().lower()}
+
     @app.post("/profiles/{profile_id}/select")
     async def select_profile(profile_id: str, payload: ProfileSelectPayload | None = None):
         profile = service.select_profile(profile_id, pin=(payload.pin if payload else None))
@@ -475,6 +499,12 @@ def create_app(config_path: str | Path = "config.yaml") -> FastAPI:
             raise HTTPException(status_code=403, detail="Video not found or private access denied")
         return {"status": "updated", "video_id": video_id, "privacy_level": payload.privacy_level}
 
+    @app.post("/videos/{video_id}/reject")
+    async def reject_video(video_id: str, payload: VideoRejectPayload):
+        if not service.reject_video(video_id, reason=payload.reason):
+            raise HTTPException(status_code=404, detail="Video not found")
+        return {"status": "updated", "video_id": video_id, "reason": payload.reason}
+
     @app.get("/stream/{video_id}")
     async def stream_video(video_id: str):
         video_path = service.get_stream_path(video_id)
@@ -495,6 +525,10 @@ def _serialize_video(item: dict[str, Any]) -> dict[str, Any]:
         "downloaded": bool(item.get("downloaded")),
         "source_url": item.get("source_url"),
         "watched": bool(item.get("watched")),
+        "completed": bool(item.get("completed")),
+        "duration_seconds": item.get("duration_seconds"),
+        "total_watch_seconds": item.get("total_watch_seconds"),
+        "rejected_reason": item.get("rejected_reason"),
         "privacy_level": item.get("privacy_level") or "standard",
         "artwork_url": item.get("artwork_url"),
     }

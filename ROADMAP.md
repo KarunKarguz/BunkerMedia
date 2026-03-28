@@ -131,16 +131,16 @@ The repo must meet a real open-source `1.0` bar.
 
 - [x] poster/thumb enrichment exists and is cached locally
 - [x] fullscreen playback flow exists in Bunku
-- [ ] continue-watching is prominent and profile-aware
+- [x] continue-watching is prominent and profile-aware
 - [ ] TV remote / keyboard flow is stable on couch-distance displays
-- [ ] search, filters, and recommendation actions are complete in the UI
+- [x] search, filters, and recommendation actions are complete in the UI
 
 ### Privacy and Household Controls
 
 - [x] PIN rotation/change flow exists
 - [x] kids mode supports explicit allow/block controls
-- [ ] vault state is visible and understandable from the UI
-- [ ] private/explicit media cannot leak through search, rails, recommendations, or direct stream access
+- [x] vault state is visible and understandable from the UI
+- [x] private/explicit media cannot leak through search, rails, recommendations, or direct stream access
 
 ### Acquisition and Library
 
@@ -156,30 +156,30 @@ The repo must meet a real open-source `1.0` bar.
 - [x] offline planner exists
 - [x] storage policy exists
 - [x] startup/upgrade validation across multiple prior DB versions exists
-- [ ] long-run soak results are documented
+- [x] long-run soak results are documented
 
 ### Public Release Engineering
 
 - [x] `ruff` gate in CI
 - [x] `mypy` gate in CI
 - [x] coverage threshold in CI
-- [ ] multi-arch container publishing
-- [ ] clean fresh-install verification on Linux and Raspberry Pi
+- [x] multi-arch container publishing
+- [x] clean fresh-install verification on Linux and Raspberry Pi
 
 ## Execution Plan to Reach 1.0
 
 ### Track A: OTT Polish
 
 1. Add fullscreen playback and stronger focus-memory behavior. Completed in `0.2.8`.
-2. Add recommendation actions: `not interested`, `hide channel`.
-3. Improve continue-watching and per-profile shelves.
+2. Add recommendation actions: `not interested`, `hide channel`. Completed in `0.3.0`.
+3. Improve continue-watching and per-profile shelves. Completed in `0.3.0`.
 4. Refine artwork quality policy and lightweight refresh rules.
 
 ### Track B: Privacy and Family Controls
 
 1. Add PIN rotation/change flow. Completed in `0.2.9`.
 2. Add channel allow/block controls for kids mode and vault profiles. Completed in `0.2.9`.
-3. Surface clearer vault-health messaging in Bunku.
+3. Surface clearer vault-health messaging in Bunku. Completed in `0.3.0`.
 
 ### Track C: Acquisition and Off-Grid Appliance
 
@@ -191,8 +191,9 @@ The repo must meet a real open-source `1.0` bar.
 
 1. Add `ruff`, `mypy`, and coverage gates in CI. Completed in `0.2.10`.
 2. Add migration-upgrade validation for older database states. Completed in `0.2.10`.
-3. Publish multi-arch images and verify fresh Pi/Linux installs.
-4. Document a formal `1.0` release checklist.
+3. Publish multi-arch images and verify fresh Pi/Linux installs. Completed in `0.3.0`.
+4. Document long-run soak behavior and keep the nightly soak workflow green. Completed in `0.3.0`.
+5. Document a formal `1.0` release checklist.
 
 ## Best-In-Class Differentiators
 
@@ -208,10 +209,10 @@ If BunkerMedia is going to be more than "yet another self-hosted media app", the
 
 These are the top blockers preventing a clean `1.0.0` release today:
 
-1. search, filters, and recommendation actions are still not fully closed for the `1.0` UX bar
-2. long-run soak results are not documented yet
-3. multi-arch container publishing is not in place yet
-4. clean fresh-install verification on Linux and Raspberry Pi is not closed yet
+1. TV remote / keyboard flow still needs more couch-distance validation and polish
+2. duplicate detection is not strong enough across imports, downloads, and providers
+3. source-priority and dedupe policy are not unified yet
+4. richer local library classification still needs to move beyond basic heuristics
 
 ## After 1.0
 

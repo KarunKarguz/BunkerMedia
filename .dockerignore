@@ -1,0 +1,16 @@
+.git
+.github
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+backups
+bunkermedia.db
+archive.txt
+logs
+media
+dist

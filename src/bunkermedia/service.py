@@ -515,6 +515,23 @@ class BunkerService:
             "pin_required": active.get("pin_required", False),
         }
         snapshot["private_items_visible"] = bool(active.get("can_access_private"))
+        if not bool(snapshot.get("private_mode_enabled")):
+            snapshot["vault_ready"] = False
+            snapshot["vault_summary"] = "Private vault mode is disabled."
+        elif str(snapshot.get("status")) == "ok":
+            snapshot["vault_ready"] = True
+            if bool(active.get("can_access_private")):
+                snapshot["vault_summary"] = "Encrypted local storage is verified and this profile can access private titles."
+            else:
+                snapshot["vault_summary"] = (
+                    "Encrypted local storage is verified. Private titles stay hidden until a vault-capable profile is active."
+                )
+        else:
+            snapshot["vault_ready"] = False
+            snapshot["vault_summary"] = (
+                "Private mode is enabled but encrypted storage has not been verified yet. "
+                "Add the configured marker file or mount media on an encrypted store."
+            )
         return snapshot
 
     def set_video_privacy(self, video_id: str, privacy_level: str) -> bool:
@@ -522,6 +539,32 @@ class BunkerService:
         if not bool(active.get("can_access_private")):
             return False
         return self.db.set_video_privacy(video_id, privacy_level)
+
+    def reject_video(self, video_id: str, reason: str = "not_interested") -> bool:
+        active = self.get_active_profile()
+        profile_id = str(active.get("profile_id") or self.db.DEFAULT_PROFILE_ID)
+        video = self.db.get_video(video_id, profile_id=profile_id)
+        if not video or not self._video_allowed_for_profile(video, active):
+            return False
+        normalized_reason = str(reason or "not_interested").strip().lower() or "not_interested"
+        return self.db.set_profile_video_rejection(video_id, profile_id=profile_id, reason=normalized_reason)
+
+    def block_channel(self, channel: str, profile_id: str | None = None) -> dict[str, object] | None:
+        normalized_channel = self._normalize_channel_name(channel)
+        if not normalized_channel:
+            return None
+        target_profile_id = str(profile_id or self.get_active_profile().get("profile_id") or self.db.DEFAULT_PROFILE_ID)
+        existing = self.db.get_profile(target_profile_id)
+        if not existing:
+            return None
+        profile = self._profile_with_policy(existing)
+        blocked = set(self._profile_channel_entries(profile, "blocked_channels"))
+        blocked.add(normalized_channel)
+        allowed = [item for item in self._profile_channel_entries(profile, "allowed_channels") if item != normalized_channel]
+        self.db.replace_preferences(self.PROFILE_CHANNEL_BLOCK, sorted(blocked), profile_id=target_profile_id)
+        self.db.replace_preferences(self.PROFILE_CHANNEL_ALLOW, sorted(set(allowed)), profile_id=target_profile_id)
+        refreshed = self.db.get_profile(target_profile_id)
+        return self._profile_with_policy(refreshed)
 
     async def organize_imports(self) -> dict[str, object]:
         result = cast(dict[str, object], self.import_organizer.organize_once())

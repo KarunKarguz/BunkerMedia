@@ -211,6 +211,8 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("/jobs/{job_id}/pause", paths)
             self.assertIn("/jobs/{job_id}/resume", paths)
             self.assertIn("/jobs/{job_id}/priority", paths)
+            self.assertIn("/profiles/{profile_id}/channels/block", paths)
+            self.assertIn("/videos/{video_id}/reject", paths)
 
             async def _exercise_api() -> None:
                 async with app.router.lifespan_context(app):
@@ -304,6 +306,31 @@ class IntegrationTests(unittest.TestCase):
                         artwork = await client.get(filtered_search.json()[0]["artwork_url"])
                         self.assertEqual(artwork.status_code, 200)
                         self.assertTrue(artwork.headers["content-type"].split(";")[0].startswith("image/"))
+                        discovered_video_id = filtered_search.json()[0]["video_id"]
+
+                        rejected = await client.post(
+                            f"/videos/{discovered_video_id}/reject",
+                            json={"reason": "not_interested"},
+                        )
+                        self.assertEqual(rejected.status_code, 200)
+
+                        rejected_video = await client.get(f"/videos/{discovered_video_id}")
+                        self.assertEqual(rejected_video.status_code, 200)
+                        self.assertEqual(rejected_video.json()["rejected_reason"], "not_interested")
+
+                        blocked_channel = await client.post(
+                            "/profiles/default/channels/block",
+                            json={"channel": "local_media"},
+                        )
+                        self.assertEqual(blocked_channel.status_code, 200)
+                        self.assertIn("local_media", blocked_channel.json()["profile"]["blocked_channels"])
+
+                        hidden_after_block = await client.get(
+                            "/search",
+                            params={"q": "episode", "channel": "local_media", "limit": 10},
+                        )
+                        self.assertEqual(hidden_after_block.status_code, 200)
+                        self.assertEqual(hidden_after_block.json(), [])
 
                         seed_job = service.db.queue_download("https://example.invalid/dead", target_type="single")
                         service.db.dead_letter_job(seed_job, error="seed failure")
@@ -487,6 +514,14 @@ class IntegrationTests(unittest.TestCase):
                         hidden = await client.get("/videos", params={"search": "Mock", "limit": 10})
                         self.assertEqual(hidden.status_code, 200)
                         self.assertEqual(len(hidden.json()), 0)
+                        hidden_search = await client.get("/search", params={"q": "Mock", "limit": 10})
+                        self.assertEqual(hidden_search.status_code, 200)
+                        self.assertEqual(hidden_search.json(), [])
+                        hidden_recs = await client.get("/recommendations", params={"limit": 5})
+                        self.assertEqual(hidden_recs.status_code, 200)
+                        self.assertEqual(hidden_recs.json(), [])
+                        hidden_stream = await client.get("/stream/mockvid123")
+                        self.assertEqual(hidden_stream.status_code, 404)
 
             asyncio.run(_exercise_flow())
 

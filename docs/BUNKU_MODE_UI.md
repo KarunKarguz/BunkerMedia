@@ -15,6 +15,7 @@ A household user should open one local URL and immediately:
 
 1. Home
 - Continue Watching
+- Continue-watching spotlight in the featured stage
 - Downloaded Now
 - Recommended for You
 - Fresh Sync Results
@@ -23,12 +24,14 @@ A household user should open one local URL and immediately:
 - Downloaded-only filter
 - Channel filter
 - Duration and freshness filters
+- Active filter chips and result summary
 
 3. Player
 - Resume position
 - Fullscreen OTT playback shell
 - Subtitle/audio selection
 - Like/Dislike/Not Interested controls
+- Hide-channel action from featured/recommendation rails
 
 4. Queue & Sync
 - Active downloads
@@ -72,6 +75,6 @@ When network is unavailable:
 - No external telemetry by default.
 - All intent/mood features are opt-in.
 - Private-vault mode hides marked media from non-vault profiles.
-- UI should surface encrypted-storage health as an appliance status signal.
+- UI should surface encrypted-storage health and vault readiness as an appliance status signal.
 - Sensitive content protection is based on encrypted storage plus profile/vault visibility rules, not on misleading “zero-cost compression” claims.
 - TV/keyboard mode should preserve focus memory across rail refreshes and player open/close cycles.

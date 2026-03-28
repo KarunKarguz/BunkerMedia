@@ -149,6 +149,47 @@ class PrivacyTests(unittest.TestCase):
 
             asyncio.run(_run())
 
+    def test_profile_rejection_does_not_leak_to_default_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg_path = root / "config.yaml"
+            cfg_path.write_text(
+                "\n".join(
+                    [
+                        "download_path: ./media",
+                        "database_path: ./bunkermedia.db",
+                        "download_archive: ./archive.txt",
+                        "auto_start_workers: false",
+                        "force_offline_mode: true",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            async def _run() -> None:
+                service = BunkerService(cfg_path)
+                await service.initialize()
+                service.db.upsert_video(
+                    VideoMetadata(video_id="reject-1", title="Quiet Documentary", channel="Calm", downloaded=False)
+                )
+
+                profile = service.create_profile("Second Viewer", is_kids=False, can_access_private=False)
+                self.assertIsNotNone(profile)
+                self.assertIsNotNone(service.select_profile(str(profile["profile_id"])))
+                self.assertTrue(service.reject_video("reject-1", reason="not_interested"))
+
+                scoped = service.get_video("reject-1")
+                self.assertIsNotNone(scoped)
+                self.assertEqual(scoped["rejected_reason"], "not_interested")
+
+                self.assertIsNotNone(service.select_profile("default"))
+                default_view = service.get_video("reject-1")
+                self.assertIsNotNone(default_view)
+                self.assertIsNone(default_view["rejected_reason"])
+                await service.shutdown()
+
+            asyncio.run(_run())
+
 
 if __name__ == "__main__":
     unittest.main()

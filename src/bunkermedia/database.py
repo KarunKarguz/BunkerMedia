@@ -534,6 +534,64 @@ class Database:
             )
             self.conn.commit()
 
+    def set_profile_video_rejection(
+        self,
+        video_id: str,
+        profile_id: str = DEFAULT_PROFILE_ID,
+        reason: str | None = None,
+    ) -> bool:
+        normalized_profile = (profile_id or self.DEFAULT_PROFILE_ID).strip().lower() or self.DEFAULT_PROFILE_ID
+        normalized_reason = str(reason or "").strip() or None
+        now = self._utc_now()
+        with self._lock:
+            exists = (
+                self.conn.execute("SELECT 1 FROM videos WHERE video_id=?", (video_id,)).fetchone() is not None
+            )
+            if not exists:
+                return False
+            existing = self.conn.execute(
+                """
+                SELECT watched, liked, disliked, rating, completed, total_watch_seconds
+                FROM profile_video_state
+                WHERE profile_id=? AND video_id=?
+                """,
+                (normalized_profile, video_id),
+            ).fetchone()
+            self.conn.execute(
+                """
+                INSERT INTO profile_video_state (
+                    profile_id, video_id, watched, liked, disliked, rating, completed,
+                    rejected_reason, total_watch_seconds, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(profile_id, video_id) DO UPDATE SET
+                    rejected_reason=excluded.rejected_reason,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    normalized_profile,
+                    video_id,
+                    int(existing["watched"] or 0) if existing else 0,
+                    int(existing["liked"] or 0) if existing else 0,
+                    int(existing["disliked"] or 0) if existing else 0,
+                    float(existing["rating"] or 0.0) if existing else 0.0,
+                    int(existing["completed"] or 0) if existing else 0,
+                    normalized_reason,
+                    int(existing["total_watch_seconds"] or 0) if existing else 0,
+                    now,
+                ),
+            )
+            if normalized_profile == self.DEFAULT_PROFILE_ID:
+                self.conn.execute(
+                    """
+                    UPDATE videos
+                    SET rejected_reason=?, updated_at=?
+                    WHERE video_id=?
+                    """,
+                    (normalized_reason, now, video_id),
+                )
+            self.conn.commit()
+            return True
+
     def queue_download(self, url: str, target_type: str = "auto", priority: int = 0, batch_id: int | None = None) -> int:
         now = self._utc_now()
         with self._lock:
